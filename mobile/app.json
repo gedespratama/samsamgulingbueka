@@ -11,6 +11,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.postinginternet.samsamgulingbueka",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,6 +24,12 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "output": "static"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2fd98edb-1855-4609-a704-3271d6a7bea3"
+      }
+    },
+    "owner": "postinginternet"
   }
 }

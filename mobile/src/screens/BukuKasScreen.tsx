@@ -17,7 +17,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FilterChips from '../components/ui/FilterChips';
 import EmptyState from '../components/ui/EmptyState';
-import { cashRecordsSeed, type CashRecord } from '../data/mock';
+import { cashRecordRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import type { CashRecord } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { useBlurOnClose } from '../utils/blur';
@@ -41,7 +43,7 @@ const formatDateTime = (iso: string) =>
 
 export default function BukuKasScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [records, setRecords] = useState<CashRecord[]>(cashRecordsSeed);
+  const { data: records, refresh } = useDbList(cashRecordRepo.getAll);
   const [typeFilter, setTypeFilter] = useState<TypeKey>('semua');
   const [modalVisible, setModalVisible] = useState(false);
   const [type, setType] = useState<'masuk' | 'keluar'>('masuk');
@@ -60,19 +62,19 @@ export default function BukuKasScreen() {
 
   const canSave = title.trim().length > 0 && Number(amount) > 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) return;
     const amountNum = Number(amount);
-    setRecords((prev) => [
+    await cashRecordRepo.create(
       {
-        id: `cr-${Date.now()}`,
         type,
         title: title.trim(),
         amount: amountNum,
         createdAt: new Date().toISOString(),
       },
-      ...prev,
-    ]);
+      `cr-${Date.now()}`
+    );
+    await refresh();
     setModalVisible(false);
     Alert.alert('Berhasil', `${type === 'masuk' ? 'Pemasukan' : 'Pengeluaran'} ${formatRupiah(amountNum)} tercatat.`);
   };

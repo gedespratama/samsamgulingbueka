@@ -7,21 +7,27 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MenuFormModal, { type MenuFormData } from '../components/MenuFormModal';
 import FilterChips from '../components/ui/FilterChips';
 import EmptyState from '../components/ui/EmptyState';
-import { menuCategories, menuSeed, type Menu } from '../data/mock';
+import { categoryRepo, menuRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import type { Menu } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import type { RootStackParamList } from '../navigation/types';
 
 type CategoryKey = string;
 
-const categoryOptions = [{ key: 'semua', label: 'Semua' }, ...menuCategories.map((c) => ({ key: c.id, label: c.name }))];
-
 export default function ProdukScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [menus, setMenus] = useState<Menu[]>(menuSeed);
+  const { data: menus, loading: menusLoading, refresh: refreshMenus } = useDbList(menuRepo.getAll);
+  const { data: categories } = useDbList(categoryRepo.getAll);
   const [category, setCategory] = useState<CategoryKey>('semua');
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<Menu | null>(null);
+
+  const categoryOptions = [
+    { key: 'semua', label: 'Semua' },
+    ...categories.map((c) => ({ key: c.id, label: c.name })),
+  ];
 
   const filteredMenus = useMemo(
     () => (category === 'semua' ? menus : menus.filter((m) => m.categoryId === category)),
@@ -38,32 +44,29 @@ export default function ProdukScreen() {
     setModalVisible(true);
   };
 
-  const handleSave = (data: MenuFormData) => {
+  const handleSave = async (data: MenuFormData) => {
     if (editing) {
-      setMenus((prev) =>
-        prev.map((m) =>
-          m.id === editing.id
-            ? { ...m, name: data.name, categoryId: data.categoryId, basePrice: data.price, costPrice: data.costPrice, stock: data.stock, available: data.available }
-            : m
-        )
-      );
+      await menuRepo.update({ ...editing, ...data, basePrice: data.price });
       Alert.alert('Berhasil', `${data.name} berhasil diperbarui.`);
     } else {
-      const newMenu: Menu = {
-        id: `m-${Date.now()}`,
-        name: data.name,
-        basePrice: data.price,
-        costPrice: data.costPrice,
-        categoryId: data.categoryId,
-        stock: data.stock,
-        available: data.available,
-        variants: [],
-        addons: [],
-      };
-      setMenus((prev) => [...prev, newMenu]);
+      const id = `m-${Date.now()}`;
+      await menuRepo.create(
+        {
+          name: data.name,
+          basePrice: data.price,
+          costPrice: data.costPrice,
+          categoryId: data.categoryId,
+          stock: data.stock,
+          available: data.available,
+          variants: [],
+          addons: [],
+        },
+        id
+      );
       Alert.alert('Berhasil', `${data.name} berhasil disimpan.`);
     }
     setModalVisible(false);
+    await refreshMenus();
   };
 
   const handleDelete = (menu: Menu) => {
@@ -72,8 +75,9 @@ export default function ProdukScreen() {
       {
         text: 'Hapus',
         style: 'destructive',
-        onPress: () => {
-          setMenus((prev) => prev.filter((m) => m.id !== menu.id));
+        onPress: async () => {
+          await menuRepo.remove(menu.id);
+          await refreshMenus();
           Alert.alert('Berhasil', `${menu.name} berhasil dihapus.`);
         },
       },
@@ -115,15 +119,19 @@ export default function ProdukScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <EmptyState
-            icon="silverware-fork-knife"
-            title="Belum ada menu"
-            subtitle="Ketuk tombol + di pojok kanan atas untuk menambahkan menu."
-          />
+          menusLoading ? (
+            <EmptyState icon="silverware-fork-knife" title="Memuat menu..." />
+          ) : (
+            <EmptyState
+              icon="silverware-fork-knife"
+              title="Belum ada menu"
+              subtitle="Ketuk tombol + di pojok kanan atas untuk menambahkan menu."
+            />
+          )
         }
         renderItem={({ item }) => {
           const profit = item.basePrice - item.costPrice;
-          const catName = menuCategories.find((c) => c.id === item.categoryId)?.name ?? '-';
+          const catName = categories.find((c) => c.id === item.categoryId)?.name ?? '-';
           return (
             <View style={[styles.card, !item.available && styles.cardInactive]}>
               <View style={styles.cardTop}>

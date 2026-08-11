@@ -2,15 +2,17 @@ import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useState } from 'react';
 import AppHeader from '../components/AppHeader';
 import SummaryCard from '../components/SummaryCard';
 import MenuGrid from '../components/MenuGrid';
 import WeeklySalesCard from '../components/WeeklySalesCard';
 import { usePrinter } from '../context/PrinterContext';
-import { summaryToday } from '../data/mock';
+import { orderRepo, type WeeklySalesData } from '../db/repositories';
+import type { SummaryData } from '../data/mock';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -19,6 +21,29 @@ const dateLabel = new Intl.DateTimeFormat('id-ID', {
   month: 'short',
   year: 'numeric',
 }).format(new Date());
+
+const emptySummary: SummaryData = {
+  total: 0,
+  transactionCount: 0,
+  average: 0,
+  paymentMethods: [
+    { key: 'tunai', label: 'Tunai', amount: 0 },
+    { key: 'qris', label: 'QRIS', amount: 0 },
+    { key: 'transfer', label: 'Transfer', amount: 0 },
+    { key: 'hutang', label: 'Hutang', amount: 0 },
+  ],
+};
+
+const emptyWeekly: WeeklySalesData = {
+  total: 0,
+  count: 0,
+  rows: [
+    { key: 'tunai', label: 'Tunai', total: 0, count: 0, dotColor: '#16A34A' },
+    { key: 'qris', label: 'QRIS', total: 0, count: 0, dotColor: '#0284C7' },
+    { key: 'transfer', label: 'Transfer', total: 0, count: 0, dotColor: '#7C3AED' },
+    { key: 'hutang', label: 'Hutang', total: 0, count: 0, dotColor: '#DC2626' },
+  ],
+};
 
 const menuRoutes: Record<string, keyof RootStackParamList> = {
   'laci-kas': 'LaciKas',
@@ -35,7 +60,26 @@ export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const netInfo = useNetInfo();
   const { status } = usePrinter();
+  const [summary, setSummary] = useState<SummaryData>(emptySummary);
+  const [weekly, setWeekly] = useState<WeeklySalesData>(emptyWeekly);
   const isOffline = netInfo.isConnected === false;
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all([orderRepo.getTodaySummary(), orderRepo.getWeeklySummary()])
+        .then(([day, week]) => {
+          if (active) {
+            setSummary(day);
+            setWeekly(week);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   const handleMenuPress = (key: string) => {
     const route = menuRoutes[key];
@@ -76,9 +120,9 @@ export default function HomeScreen() {
           </LinearGradient>
         </Pressable>
 
-        <SummaryCard summary={summaryToday} dateLabel={dateLabel} />
+        <SummaryCard summary={summary} dateLabel={dateLabel} />
         <MenuGrid onPressItem={handleMenuPress} />
-        <WeeklySalesCard isOffline={isOffline} />
+        <WeeklySalesCard data={weekly} isOffline={isOffline} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useNetInfo } from '@react-native-community/netinfo';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import EmptyState from '../components/ui/EmptyState';
 import { useSync } from '../context/SyncContext';
-import { paymentMethodMeta, transactionsSeed, type Transaction } from '../data/mock';
+import { orderRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import { paymentMethodMeta, type Transaction } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { timeAgo } from '../utils/time';
@@ -20,10 +22,17 @@ export default function SyncScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const netInfo = useNetInfo();
   const { pendingIds, isSyncing, lastSyncedAt, autoSync, setAutoSync, syncNow } = useSync();
+  const { data: allOrders, loading, refresh } = useDbList(orderRepo.getAll);
   const [syncing, setSyncing] = useState(false);
 
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
   const isOffline = netInfo.isConnected === false;
-  const pendingTransactions: Transaction[] = transactionsSeed.filter((t) => pendingIds.includes(t.id));
+  const pendingTransactions: Transaction[] = allOrders.filter((t) => pendingIds.includes(t.id));
 
   const handleSync = async () => {
     if (isOffline) {

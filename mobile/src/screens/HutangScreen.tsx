@@ -16,12 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import EmptyState from '../components/ui/EmptyState';
-import {
-  customerDebtsSeed,
-  supplierDebtsSeed,
-  type CustomerDebt,
-  type SupplierDebt,
-} from '../data/mock';
+import { debtRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import type { CustomerDebt, SupplierDebt } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { useBlurOnClose } from '../utils/blur';
@@ -34,9 +31,9 @@ const formatDate = (iso: string) =>
 
 export default function HutangScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { data: customerDebts, refresh: refreshCustomer } = useDbList(debtRepo.getCustomerDebts);
+  const { data: supplierDebts, refresh: refreshSupplier } = useDbList(debtRepo.getSupplierDebts);
   const [tab, setTab] = useState<TabKey>('pelanggan');
-  const [customerDebts, setCustomerDebts] = useState<CustomerDebt[]>(customerDebtsSeed);
-  const [supplierDebts, setSupplierDebts] = useState<SupplierDebt[]>(supplierDebtsSeed);
   const [addVisible, setAddVisible] = useState(false);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -62,26 +59,25 @@ export default function HutangScreen() {
 
   const canSave = name.trim().length > 0 && Number(amount) > 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) return;
     const amountNum = Number(amount);
     if (tab === 'pelanggan') {
-      setCustomerDebts((prev) => [
+      await debtRepo.createCustomerDebt(
         {
-          id: `cd-${Date.now()}`,
           customerName: name.trim(),
           amount: amountNum,
           note: note.trim(),
           status: 'unpaid',
           createdAt: new Date().toISOString(),
         },
-        ...prev,
-      ]);
+        `cd-${Date.now()}`
+      );
+      await refreshCustomer();
       Alert.alert('Berhasil', `Hutang ${name.trim()} sebesar ${formatRupiah(amountNum)} tercatat.`);
     } else {
-      setSupplierDebts((prev) => [
+      await debtRepo.createSupplierDebt(
         {
-          id: `sd-${Date.now()}`,
           supplierName: name.trim(),
           amount: amountNum,
           note: note.trim(),
@@ -89,8 +85,9 @@ export default function HutangScreen() {
           status: 'unpaid',
           createdAt: new Date().toISOString(),
         },
-        ...prev,
-      ]);
+        `sd-${Date.now()}`
+      );
+      await refreshSupplier();
       Alert.alert('Berhasil', `Hutang ke ${name.trim()} sebesar ${formatRupiah(amountNum)} tercatat.`);
     }
     setAddVisible(false);
@@ -101,8 +98,10 @@ export default function HutangScreen() {
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Lunas',
-        onPress: () =>
-          setCustomerDebts((prev) => prev.map((d) => (d.id === debt.id ? { ...d, status: 'paid' as const } : d))),
+        onPress: async () => {
+          await debtRepo.markCustomerPaid(debt.id);
+          await refreshCustomer();
+        },
       },
     ]);
   };
@@ -112,8 +111,10 @@ export default function HutangScreen() {
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Lunas',
-        onPress: () =>
-          setSupplierDebts((prev) => prev.map((d) => (d.id === debt.id ? { ...d, status: 'paid' as const } : d))),
+        onPress: async () => {
+          await debtRepo.markSupplierPaid(debt.id);
+          await refreshSupplier();
+        },
       },
     ]);
   };

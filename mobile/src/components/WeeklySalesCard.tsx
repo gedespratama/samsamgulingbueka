@@ -1,14 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { weeklySales, weeklySalesTotal } from '../data/mock';
+import type { WeeklySalesData } from '../db/repositories';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 
 interface Props {
+  data: WeeklySalesData;
   isOffline: boolean;
 }
 
-export default function WeeklySalesCard({ isOffline }: Props) {
+export default function WeeklySalesCard({ data, isOffline }: Props) {
+  const { rows, total, count } = data;
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
@@ -33,7 +35,7 @@ export default function WeeklySalesCard({ isOffline }: Props) {
           <Text style={[styles.cell, styles.colShare]}>%</Text>
         </View>
 
-        {weeklySales.map((row) => (
+        {rows.map((row) => (
           <View key={row.key} style={styles.tableRow}>
             <View style={[styles.methodCell, styles.colMethod]}>
               <View style={[styles.dot, { backgroundColor: row.dotColor }]} />
@@ -42,17 +44,15 @@ export default function WeeklySalesCard({ isOffline }: Props) {
             <Text style={[styles.cell, styles.colCount, styles.rowValue]}>{row.count}</Text>
             <Text style={[styles.cell, styles.colTotal, styles.rowValue]}>{formatRupiah(row.total)}</Text>
             <Text style={[styles.cell, styles.colShare, styles.rowValue]}>
-              {Math.round((row.total / weeklySalesTotal) * 100)}%
+              {total > 0 ? Math.round((row.total / total) * 100) : 0}%
             </Text>
           </View>
         ))}
 
         <View style={styles.tableFooter}>
           <Text style={[styles.cell, styles.colMethod, styles.footerLabel]}>Total Minggu Ini</Text>
-          <Text style={[styles.cell, styles.colCount, styles.footerValue]}>
-            {weeklySales.reduce((sum, row) => sum + row.count, 0)}
-          </Text>
-          <Text style={[styles.cell, styles.colTotal, styles.footerValue]}>{formatRupiah(weeklySalesTotal)}</Text>
+          <Text style={[styles.cell, styles.colCount, styles.footerValue]}>{count}</Text>
+          <Text style={[styles.cell, styles.colTotal, styles.footerValue]}>{formatRupiah(total)}</Text>
           <Text style={[styles.cell, styles.colShare, styles.footerValue]}>100%</Text>
         </View>
       </View>

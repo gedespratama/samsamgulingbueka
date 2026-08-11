@@ -16,14 +16,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import EmptyState from '../components/ui/EmptyState';
-import { customersSeed, type Customer } from '../data/mock';
+import { customerRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import type { Customer } from '../data/mock';
 import { colors } from '../theme';
 import { useBlurOnClose } from '../utils/blur';
 import type { RootStackParamList } from '../navigation/types';
 
 export default function PelangganScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [customers, setCustomers] = useState<Customer[]>(customersSeed);
+  const { data: customers, refresh } = useDbList(customerRepo.getAll);
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -32,12 +34,10 @@ export default function PelangganScreen() {
 
   const canSave = name.trim().length > 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) return;
-    setCustomers((prev) => [
-      { id: `c-${Date.now()}`, name: name.trim(), phone: phone.trim() },
-      ...prev,
-    ]);
+    await customerRepo.create({ name: name.trim(), phone: phone.trim() }, `c-${Date.now()}`);
+    await refresh();
     setModalVisible(false);
     Alert.alert('Berhasil', `${name.trim()} berhasil ditambahkan sebagai pelanggan.`);
   };

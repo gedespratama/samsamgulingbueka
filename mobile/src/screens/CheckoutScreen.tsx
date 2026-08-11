@@ -9,7 +9,8 @@ import EmptyState from '../components/ui/EmptyState';
 import QuantityStepper from '../components/ui/QuantityStepper';
 import { useCart } from '../context/CartContext';
 import { usePrinter } from '../context/PrinterContext';
-import { paymentMethodMeta, type PaymentMethodKey } from '../data/mock';
+import { orderRepo, syncRepo } from '../db/repositories';
+import { paymentMethodMeta, type PaymentMethodKey, type Transaction } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { shareReceiptPdf } from '../utils/receiptPdf';
@@ -49,8 +50,34 @@ export default function CheckoutScreen() {
   const paidAmount = method === 'tunai' ? (Number(cashPaid) || 0) : subtotal;
   const change = Math.max(0, paidAmount - subtotal);
 
-  const handlePay = () => {
-    setOrderId(`TRX-${Date.now().toString().slice(-4)}`);
+  const handlePay = async () => {
+    const id = `TRX-${Date.now().toString().slice(-4)}`;
+    const transaction: Transaction = {
+      id,
+      orderType,
+      tableNumber: tableNumber ? Number(tableNumber) : null,
+      items: items.map((i) => ({
+        menuId: i.menuId,
+        name: i.name,
+        qty: i.qty,
+        unitPrice: i.unitPrice,
+        variant: i.variant,
+        addons: i.addons.map((a) => a.name),
+      })),
+      totalAmount: subtotal,
+      paymentMethod: method,
+      transactionType: 'offline',
+      syncStatus: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await orderRepo.create(transaction);
+      await syncRepo.enqueue('order', id);
+    } catch {
+      Alert.alert('Gagal', 'Gagal menyimpan transaksi. Silakan coba lagi.');
+      return;
+    }
+    setOrderId(id);
     setPaidOrder({ total: subtotal, method, orderType });
     setSuccessVisible(true);
   };

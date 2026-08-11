@@ -2,31 +2,45 @@ import { useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useCallback } from 'react';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import KasirItemModal from '../components/KasirItemModal';
 import FilterChips from '../components/ui/FilterChips';
 import { useCart } from '../context/CartContext';
 import { usePrinter } from '../context/PrinterContext';
-import { menuCategories, menuSeed, type Menu } from '../data/mock';
+import { categoryRepo, menuRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import type { Menu } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import type { RootStackParamList } from '../navigation/types';
 
 type CategoryKey = string;
 
-const categoryOptions = [{ key: 'semua', label: 'Semua' }, ...menuCategories.map((c) => ({ key: c.id, label: c.name }))];
-
 export default function KasirScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { items, totalItems, subtotal, orderType, setOrderType, tableNumber, setTableNumber } = useCart();
   const { status } = usePrinter();
+  const { data: menus, loading: menusLoading, refresh: refreshMenus } = useDbList(menuRepo.getAll);
+  const { data: categories } = useDbList(categoryRepo.getAll);
   const [category, setCategory] = useState<CategoryKey>('semua');
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
 
+  useFocusEffect(
+    useCallback(() => {
+      refreshMenus();
+    }, [refreshMenus])
+  );
+
+  const categoryOptions = [
+    { key: 'semua', label: 'Semua' },
+    ...categories.map((c) => ({ key: c.id, label: c.name })),
+  ];
+
   const filteredMenus = useMemo(
-    () => (category === 'semua' ? menuSeed : menuSeed.filter((m) => m.categoryId === category)),
-    [category]
+    () => (category === 'semua' ? menus : menus.filter((m) => m.categoryId === category)),
+    [menus, category]
   );
 
   const handleFinish = () => {
@@ -130,7 +144,9 @@ export default function KasirScreen() {
         contentContainerStyle={styles.menuList}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>Tidak ada menu di kategori ini</Text>
+          <Text style={styles.emptyText}>
+            {menusLoading ? 'Memuat menu...' : 'Belum ada menu'}
+          </Text>
         }
         renderItem={({ item }) => {
           const out = !item.available || item.stock <= 0;
@@ -190,11 +206,13 @@ export default function KasirScreen() {
         </Pressable>
       </View>
 
-      <KasirItemModal
-        menu={selectedMenu ?? menuSeed[0]}
-        visible={selectedMenu !== null}
-        onClose={() => setSelectedMenu(null)}
-      />
+      {selectedMenu && (
+        <KasirItemModal
+          menu={selectedMenu}
+          visible={selectedMenu !== null}
+          onClose={() => setSelectedMenu(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }

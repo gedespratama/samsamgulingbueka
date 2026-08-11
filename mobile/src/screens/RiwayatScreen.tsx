@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,10 +12,13 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import FilterChips from '../components/ui/FilterChips';
 import EmptyState from '../components/ui/EmptyState';
 import { useSync } from '../context/SyncContext';
-import { paymentMethodMeta, transactionsSeed, type Transaction } from '../data/mock';
+import { orderRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import { paymentMethodMeta, type Transaction } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { shareReceiptPdf } from '../utils/receiptPdf';
@@ -41,21 +44,28 @@ const formatDate = (iso: string) =>
 
 export default function RiwayatScreen() {
   const { pendingIds } = useSync();
+  const { data: allTransactions, loading, refresh } = useDbList(orderRepo.getAll);
   const [range, setRange] = useState<RangeKey>('semua');
   const [selected, setSelected] = useState<Transaction | null>(null);
 
   useBlurOnClose(selected !== null);
 
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
   const transactions = useMemo(() => {
     const now = new Date();
-    return transactionsSeed.filter((t) => {
+    return allTransactions.filter((t) => {
       const date = new Date(t.createdAt);
       if (range === 'hari_ini') return isSameDay(date, now);
       if (range === 'kemarin') return isSameDay(date, new Date(now.getTime() - 86_400_000));
       if (range === '7_hari') return now.getTime() - date.getTime() <= 7 * 86_400_000;
       return true;
     });
-  }, [range]);
+  }, [allTransactions, range]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -74,11 +84,15 @@ export default function RiwayatScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <EmptyState
-            icon="receipt-text-outline"
-            title="Tidak ada transaksi"
-            subtitle="Tidak ada transaksi pada rentang tanggal ini."
-          />
+          loading ? (
+            <EmptyState icon="receipt-text-outline" title="Memuat riwayat..." />
+          ) : (
+            <EmptyState
+              icon="receipt-text-outline"
+              title="Tidak ada transaksi"
+              subtitle="Tidak ada transaksi pada rentang tanggal ini."
+            />
+          )
         }
         renderItem={({ item }) => {
           const meta = paymentMethodMeta[item.paymentMethod];

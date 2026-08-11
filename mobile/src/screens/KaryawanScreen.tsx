@@ -6,7 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AddKaryawanModal, { type NewEmployee } from '../components/AddKaryawanModal';
-import { employeeSeed, roleOptions, type Employee, type EmployeeRole } from '../data/mock';
+import { employeeRepo } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
+import { roleOptions, type Employee, type EmployeeRole } from '../data/mock';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -20,18 +22,16 @@ const roleMeta: Record<EmployeeRole, { icon: IconName; tint: string; color: stri
 
 export default function KaryawanScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [employees, setEmployees] = useState<Employee[]>(employeeSeed);
+  const { data: employees, refresh } = useDbList(employeeRepo.getAll);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const handleSave = (data: NewEmployee) => {
-    const newEmployee: Employee = {
-      id: `emp-${Date.now()}`,
-      name: data.name,
-      role: data.role,
-      pin: data.pin,
-      active: true,
-    };
-    setEmployees((prev) => [...prev, newEmployee]);
+  const handleSave = async (data: NewEmployee) => {
+    const id = `emp-${Date.now()}`;
+    await employeeRepo.create(
+      { name: data.name, role: data.role, pin: data.pin, active: true },
+      id
+    );
+    await refresh();
     setModalVisible(false);
     Alert.alert('Berhasil', `${data.name} ditambahkan sebagai ${roleOptions[data.role].label}.`);
   };

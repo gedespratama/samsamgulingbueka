@@ -19,6 +19,7 @@ import EmptyState from '../components/ui/EmptyState';
 import { cashRecordsSeed, type CashRecord } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
+import { useBlurOnClose } from '../utils/blur';
 import type { RootStackParamList } from '../navigation/types';
 
 const formatDateTime = (iso: string) =>
@@ -35,6 +36,8 @@ export default function LaciKasScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+
+  useBlurOnClose(modalVisible);
 
   const openingBalance = 500_000;
   const cashIn = records.filter((r) => r.type === 'masuk').reduce((s, r) => s + r.amount, 0);

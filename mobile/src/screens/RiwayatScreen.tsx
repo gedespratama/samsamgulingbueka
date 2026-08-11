@@ -19,6 +19,7 @@ import { paymentMethodMeta, transactionsSeed, type Transaction } from '../data/m
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { shareReceiptPdf } from '../utils/receiptPdf';
+import { useBlurOnClose } from '../utils/blur';
 
 type RangeKey = 'semua' | 'hari_ini' | 'kemarin' | '7_hari';
 
@@ -42,6 +43,8 @@ export default function RiwayatScreen() {
   const { pendingIds } = useSync();
   const [range, setRange] = useState<RangeKey>('semua');
   const [selected, setSelected] = useState<Transaction | null>(null);
+
+  useBlurOnClose(selected !== null);
 
   const transactions = useMemo(() => {
     const now = new Date();

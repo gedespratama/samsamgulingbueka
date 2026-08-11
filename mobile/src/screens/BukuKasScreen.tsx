@@ -20,6 +20,7 @@ import EmptyState from '../components/ui/EmptyState';
 import { cashRecordsSeed, type CashRecord } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
+import { useBlurOnClose } from '../utils/blur';
 import type { RootStackParamList } from '../navigation/types';
 
 type TypeKey = 'semua' | 'masuk' | 'keluar';
@@ -47,6 +48,8 @@ export default function BukuKasScreen() {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+
+  useBlurOnClose(modalVisible);
 
   const filtered = useMemo(
     () => (typeFilter === 'semua' ? records : records.filter((r) => r.type === typeFilter)),

@@ -23,6 +23,7 @@ import LainnyaScreen from './src/screens/LainnyaScreen';
 import PrinterScreen from './src/screens/PrinterScreen';
 import SyncScreen from './src/screens/SyncScreen';
 import CustomTabBar from './src/components/CustomTabBar';
+import { dismissKeyboard } from './src/utils/blur';
 import type { RootStackParamList, RootTabParamList } from './src/navigation/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -50,7 +51,7 @@ export default function App() {
       <PrinterProvider>
         <SyncProvider>
           <CartProvider>
-            <NavigationContainer>
+            <NavigationContainer onStateChange={dismissKeyboard}>
               <StatusBar style="dark" />
               <Stack.Navigator initialRouteName="MainTabs" screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="MainTabs" component={MainTabs} />

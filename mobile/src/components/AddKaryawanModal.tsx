@@ -13,6 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { roleOptions, type EmployeeRole } from '../data/mock';
 import { colors } from '../theme';
+import { useBlurOnClose } from '../utils/blur';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -48,6 +49,8 @@ export default function AddKaryawanModal({ visible, onClose, onSave }: Props) {
       setShowPin(false);
     }
   }, [visible]);
+
+  useBlurOnClose(visible);
 
   const isPinValid = /^\d{4}$/.test(pin);
   const canSave = name.trim().length > 0 && isPinValid;

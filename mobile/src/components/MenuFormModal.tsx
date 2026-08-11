@@ -15,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { menuCategories, type Menu } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
+import { useBlurOnClose } from '../utils/blur';
 
 export interface MenuFormData {
   name: string;
@@ -50,6 +51,8 @@ export default function MenuFormModal({ visible, editing, onClose, onSave }: Pro
       setAvailable(editing?.available ?? true);
     }
   }, [visible, editing]);
+
+  useBlurOnClose(visible);
 
   const onlyDigits = (text: string) => text.replace(/[^0-9]/g, '');
 

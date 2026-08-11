@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import EmptyState from '../components/ui/EmptyState';
 import { customersSeed, type Customer } from '../data/mock';
 import { colors } from '../theme';
+import { useBlurOnClose } from '../utils/blur';
 import type { RootStackParamList } from '../navigation/types';
 
 export default function PelangganScreen() {
@@ -26,6 +27,8 @@ export default function PelangganScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+
+  useBlurOnClose(modalVisible);
 
   const canSave = name.trim().length > 0;
 

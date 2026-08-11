@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import type { Menu } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
+import { useBlurOnClose } from '../utils/blur';
 
 interface Props {
   menu: Menu;
@@ -27,6 +28,8 @@ export default function KasirItemModal({ menu, visible, onClose }: Props) {
       setNote('');
     }
   }, [visible]);
+
+  useBlurOnClose(visible);
 
   const variant = menu.variants.find((v) => v.id === variantId) ?? null;
   const addons = menu.addons.filter((a) => addonIds.includes(a.id));

@@ -13,6 +13,7 @@ import { paymentMethodMeta, type PaymentMethodKey } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { shareReceiptPdf } from '../utils/receiptPdf';
+import { useBlurOnClose } from '../utils/blur';
 import type { RootStackParamList } from '../navigation/types';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -42,6 +43,8 @@ export default function CheckoutScreen() {
   const [orderId, setOrderId] = useState('');
   const [printing, setPrinting] = useState(false);
   const { status: printerStatus } = usePrinter();
+
+  useBlurOnClose(successVisible);
 
   const paidAmount = method === 'tunai' ? (Number(cashPaid) || 0) : subtotal;
   const change = Math.max(0, paidAmount - subtotal);

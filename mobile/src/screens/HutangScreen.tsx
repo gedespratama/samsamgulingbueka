@@ -24,6 +24,7 @@ import {
 } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
+import { useBlurOnClose } from '../utils/blur';
 import type { RootStackParamList } from '../navigation/types';
 
 type TabKey = 'pelanggan' | 'supplier';
@@ -41,6 +42,8 @@ export default function HutangScreen() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [dueDate, setDueDate] = useState('');
+
+  useBlurOnClose(addVisible);
 
   const customerUnpaid = customerDebts
     .filter((d) => d.status === 'unpaid')

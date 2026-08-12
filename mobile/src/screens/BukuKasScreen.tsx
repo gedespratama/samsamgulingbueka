@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,12 +13,14 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FilterChips from '../components/ui/FilterChips';
 import EmptyState from '../components/ui/EmptyState';
+import RestrictedAccess from '../components/ui/RestrictedAccess';
 import { cashRecordRepo } from '../db/repositories';
 import { useDbList } from '../db/useDbList';
+import { useCashier } from '../context/CashierContext';
 import type { CashRecord } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
@@ -33,16 +35,20 @@ const typeOptions = [
   { key: 'keluar', label: 'Pengeluaran' },
 ] as { key: TypeKey; label: string }[];
 
-const formatDateTime = (iso: string) =>
-  new Intl.DateTimeFormat('id-ID', {
+const formatDateTime = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(iso));
+  }).format(date);
+};
 
 export default function BukuKasScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { cashier } = useCashier();
   const { data: records, refresh } = useDbList(cashRecordRepo.getAll);
   const [typeFilter, setTypeFilter] = useState<TypeKey>('semua');
   const [modalVisible, setModalVisible] = useState(false);
@@ -53,12 +59,30 @@ export default function BukuKasScreen() {
 
   useBlurOnClose(modalVisible);
 
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
   const filtered = useMemo(
     () => (typeFilter === 'semua' ? records : records.filter((r) => r.type === typeFilter)),
     [records, typeFilter]
   );
 
-  const balance = records.reduce((s, r) => s + (r.type === 'masuk' ? r.amount : -r.amount), 0);
+  if (cashier?.role === 'kasir') {
+    return (
+      <RestrictedAccess
+        message="Hanya profil Pemilik dan Admin yang dapat mengakses buku kas."
+        onBack={() => navigation.goBack()}
+      />
+    );
+  }
+
+  const balance = records.reduce(
+    (s, r) => s + (r.type === 'masuk' ? r.amount : r.type === 'keluar' ? -r.amount : 0),
+    0
+  );
 
   const canSave = title.trim().length > 0 && Number(amount) > 0;
 
@@ -125,35 +149,28 @@ export default function BukuKasScreen() {
         {filtered.length === 0 ? (
           <EmptyState icon="notebook-outline" title="Belum ada catatan" />
         ) : (
-          filtered.map((record) => (
-            <View key={record.id} style={styles.card}>
-              <View
-                style={[
-                  styles.cardIcon,
-                  { backgroundColor: record.type === 'masuk' ? colors.successSoft : '#FEE2E2' },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name={record.type === 'masuk' ? 'arrow-bottom-left' : 'arrow-top-right'}
-                  size={18}
-                  color={record.type === 'masuk' ? colors.success : colors.danger}
-                />
+          filtered.map((record) => {
+            const isShift = record.type === 'shift';
+            const isMasuk = record.type === 'masuk';
+            const icon = isShift ? 'clock-outline' : isMasuk ? 'arrow-bottom-left' : 'arrow-top-right';
+            const tint = isShift ? '#E0F2FE' : isMasuk ? colors.successSoft : '#FEE2E2';
+            const color = isShift ? '#0284C7' : isMasuk ? colors.success : colors.danger;
+            return (
+              <View key={record.id} style={styles.card}>
+                <View style={[styles.cardIcon, { backgroundColor: tint }]}>
+                  <MaterialCommunityIcons name={icon} size={18} color={color} />
+                </View>
+                <View style={styles.cardTextArea}>
+                  <Text style={styles.cardTitle}>{record.title}</Text>
+                  <Text style={styles.cardMeta}>{formatDateTime(record.createdAt)}</Text>
+                </View>
+                <Text style={[styles.cardAmount, { color }]}>
+                  {isShift ? '' : isMasuk ? '+' : '-'}
+                  {formatRupiah(record.amount)}
+                </Text>
               </View>
-              <View style={styles.cardTextArea}>
-                <Text style={styles.cardTitle}>{record.title}</Text>
-                <Text style={styles.cardMeta}>{formatDateTime(record.createdAt)}</Text>
-              </View>
-              <Text
-                style={[
-                  styles.cardAmount,
-                  { color: record.type === 'masuk' ? colors.success : colors.danger },
-                ]}
-              >
-                {record.type === 'masuk' ? '+' : '-'}
-                {formatRupiah(record.amount)}
-              </Text>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
 
@@ -214,9 +231,9 @@ export default function BukuKasScreen() {
             />
             <Text style={styles.label}>Jumlah (Rp)</Text>
             <TextInput
-              value={amount}
+              value={amount ? Number(amount).toLocaleString('id-ID') : ''}
               onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, '').slice(0, 9))}
-              placeholder="100000"
+              placeholder="100.000"
               placeholderTextColor="#9AA8C2"
               keyboardType="number-pad"
               style={styles.input}

@@ -11,6 +11,7 @@ import SummaryCard from '../components/SummaryCard';
 import MenuGrid from '../components/MenuGrid';
 import WeeklySalesCard from '../components/WeeklySalesCard';
 import { usePrinter } from '../context/PrinterContext';
+import { useCashier } from '../context/CashierContext';
 import { orderRepo, type WeeklySalesData } from '../db/repositories';
 import type { SummaryData } from '../data/mock';
 import { colors } from '../theme';
@@ -60,9 +61,13 @@ export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const netInfo = useNetInfo();
   const { status } = usePrinter();
+  const { cashier } = useCashier();
   const [summary, setSummary] = useState<SummaryData>(emptySummary);
   const [weekly, setWeekly] = useState<WeeklySalesData>(emptyWeekly);
   const isOffline = netInfo.isConnected === false;
+  const isKasir = cashier?.role === 'kasir';
+  const hiddenMenuKeys =
+    cashier?.role === 'pemilik' ? [] : isKasir ? ['karyawan', 'produk', 'laporan', 'buku-kas', 'hutang'] : ['karyawan'];
 
   useFocusEffect(
     useCallback(() => {
@@ -92,37 +97,39 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <AppHeader
-          isPrinterConnected={status === 'connected'}
-          printerStatus={status}
-          onPressPrinter={() => navigation.navigate('Printer')}
-        />
+        <View style={styles.contentWrap}>
+          <AppHeader
+            isPrinterConnected={status === 'connected'}
+            printerStatus={status}
+            onPressPrinter={() => navigation.navigate('Printer')}
+          />
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => navigation.navigate('Kasir')}
-          style={({ pressed }) => pressed && styles.ctaPressed}
-        >
-          <LinearGradient
-            colors={['#2E7CF6', '#1D4ED8']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.ctaCard}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('Kasir')}
+            style={({ pressed }) => pressed && styles.ctaPressed}
           >
-            <View style={styles.ctaIcon}>
-              <MaterialCommunityIcons name="cart" size={26} color={colors.white} />
-            </View>
-            <View style={styles.ctaTextArea}>
-              <Text style={styles.ctaTitle}>Buka Kasir</Text>
-              <Text style={styles.ctaSubtitle}>Catat pesanan pelanggan sekarang</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.white} />
-          </LinearGradient>
-        </Pressable>
+            <LinearGradient
+              colors={['#2E7CF6', '#1D4ED8']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.ctaCard}
+            >
+              <View style={styles.ctaIcon}>
+                <MaterialCommunityIcons name="cart" size={26} color={colors.white} />
+              </View>
+              <View style={styles.ctaTextArea}>
+                <Text style={styles.ctaTitle}>Buka Kasir</Text>
+                <Text style={styles.ctaSubtitle}>Catat pesanan pelanggan sekarang</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.white} />
+            </LinearGradient>
+          </Pressable>
 
-        <SummaryCard summary={summary} dateLabel={dateLabel} />
-        <MenuGrid onPressItem={handleMenuPress} />
-        <WeeklySalesCard data={weekly} isOffline={isOffline} />
+          {!isKasir && <SummaryCard summary={summary} dateLabel={dateLabel} />}
+          <MenuGrid onPressItem={handleMenuPress} hiddenKeys={hiddenMenuKeys} />
+          {!isKasir && <WeeklySalesCard data={weekly} isOffline={isOffline} />}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -136,6 +143,11 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 8,
     paddingBottom: 32,
+  },
+  contentWrap: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   ctaPressed: {
     opacity: 0.85,

@@ -15,8 +15,11 @@ import { formatRupiah } from '../utils/format';
 import { timeAgo } from '../utils/time';
 import type { RootStackParamList } from '../navigation/types';
 
-const formatTime = (iso: string) =>
-  new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+const formatTime = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(date);
+};
 
 export default function SyncScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -32,7 +35,7 @@ export default function SyncScreen() {
   );
 
   const isOffline = netInfo.isConnected === false;
-  const pendingTransactions: Transaction[] = allOrders.filter((t) => pendingIds.includes(t.id));
+  const pendingTransactions: Transaction[] = allOrders.filter((t) => !t.voided && pendingIds.includes(t.id));
 
   const handleSync = async () => {
     if (isOffline) {

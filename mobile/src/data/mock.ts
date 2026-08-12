@@ -286,6 +286,7 @@ export interface Transaction {
   paymentMethod: PaymentMethodKey;
   transactionType: 'offline' | 'online';
   syncStatus: 'pending' | 'synced';
+  voided?: boolean;
   createdAt: string;
 }
 
@@ -436,10 +437,11 @@ export const transactionsSeed: Transaction[] = [
 
 export interface CashRecord {
   id: string;
-  type: 'masuk' | 'keluar';
+  type: 'masuk' | 'keluar' | 'shift';
   title: string;
   amount: number;
   createdAt: string;
+  shiftId?: string | null;
 }
 
 export const cashRecordsSeed: CashRecord[] = [

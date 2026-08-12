@@ -5,14 +5,16 @@ import { colors } from '../theme';
 
 interface Props {
   onPressItem: (key: string, label: string) => void;
+  hiddenKeys?: string[];
 }
 
-export default function MenuGrid({ onPressItem }: Props) {
+export default function MenuGrid({ onPressItem, hiddenKeys = [] }: Props) {
+  const items = menuItems.filter((item) => !hiddenKeys.includes(item.key));
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Menu Utama</Text>
       <View style={styles.grid}>
-        {menuItems.map((item) => (
+        {items.map((item) => (
           <Pressable
             key={item.key}
             accessibilityRole="button"

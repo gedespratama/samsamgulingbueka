@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,7 +13,8 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { menuCategories, type Menu } from '../data/mock';
+import { categoryRepo } from '../db/repositories';
+import type { Menu } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import { useBlurOnClose } from '../utils/blur';
@@ -24,6 +26,8 @@ export interface MenuFormData {
   costPrice: number;
   stock: number;
   available: boolean;
+  variants: { name: string; priceExtra: number }[];
+  addons: { name: string; price: number }[];
 }
 
 interface Props {
@@ -33,24 +37,61 @@ interface Props {
   onSave: (data: MenuFormData) => void;
 }
 
+interface VariantDraft {
+  name: string;
+  priceExtra: string;
+}
+
+interface AddonDraft {
+  name: string;
+  price: string;
+}
+
 export default function MenuFormModal({ visible, editing, onClose, onSave }: Props) {
   const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState(menuCategories[0].id);
+  const [categoryId, setCategoryId] = useState('');
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [price, setPrice] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [stock, setStock] = useState('');
   const [available, setAvailable] = useState(true);
+  const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [addons, setAddons] = useState<AddonDraft[]>([]);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => {
     if (visible) {
       setName(editing?.name ?? '');
-      setCategoryId(editing?.categoryId ?? menuCategories[0].id);
+      setCategoryId(editing?.categoryId ?? categories[0]?.id ?? '');
       setPrice(editing ? String(editing.basePrice) : '');
       setCostPrice(editing ? String(editing.costPrice) : '');
       setStock(editing ? String(editing.stock) : '');
       setAvailable(editing?.available ?? true);
+      setVariants(
+        editing ? editing.variants.map((v) => ({ name: v.name, priceExtra: String(v.priceExtra) })) : []
+      );
+      setAddons(
+        editing ? editing.addons.map((a) => ({ name: a.name, price: String(a.price) })) : []
+      );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editing]);
+
+  useEffect(() => {
+    let active = true;
+    categoryRepo
+      .getAll()
+      .then((rows) => {
+        if (!active) return;
+        setCategories(rows);
+        setCategoryId((prev) => prev || rows[0]?.id || '');
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useBlurOnClose(visible);
 
@@ -69,7 +110,42 @@ export default function MenuFormModal({ visible, editing, onClose, onSave }: Pro
       costPrice: costPrice.length > 0 ? Number(costPrice) : 0,
       stock: stock.length > 0 ? Number(stock) : 0,
       available,
+      variants: variants
+        .map((v) => ({ name: v.name.trim(), priceExtra: Number(v.priceExtra) || 0 }))
+        .filter((v) => v.name.length > 0),
+      addons: addons
+        .map((a) => ({ name: a.name.trim(), price: Number(a.price) || 0 }))
+        .filter((a) => a.name.length > 0),
     });
+  };
+
+  const addVariantRow = () => setVariants((prev) => [...prev, { name: '', priceExtra: '' }]);
+  const updateVariantRow = (index: number, patch: Partial<VariantDraft>) =>
+    setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, ...patch } : v)));
+  const removeVariantRow = (index: number) =>
+    setVariants((prev) => prev.filter((_, i) => i !== index));
+
+  const addAddonRow = () => setAddons((prev) => [...prev, { name: '', price: '' }]);
+  const updateAddonRow = (index: number, patch: Partial<AddonDraft>) =>
+    setAddons((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+  const removeAddonRow = (index: number) => setAddons((prev) => prev.filter((_, i) => i !== index));
+
+  const handleAddCategory = async () => {
+    const name = newCategory.trim();
+    if (!name) return;
+    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      Alert.alert('Kategori Sudah Ada', `Kategori "${name}" sudah tersedia.`);
+      return;
+    }
+    try {
+      const created = await categoryRepo.create(name);
+      setCategories((prev) => [...prev, created]);
+      setCategoryId(created.id);
+      setAddingCategory(false);
+      setNewCategory('');
+    } catch {
+      Alert.alert('Gagal', 'Gagal menambahkan kategori. Silakan coba lagi.');
+    }
   };
 
   return (
@@ -109,7 +185,7 @@ export default function MenuFormModal({ visible, editing, onClose, onSave }: Pro
 
             <Text style={styles.label}>Kategori</Text>
             <View style={styles.categoryRow}>
-              {menuCategories.map((c) => {
+              {categories.map((c) => {
                 const selected = categoryId === c.id;
                 return (
                   <Pressable
@@ -125,15 +201,61 @@ export default function MenuFormModal({ visible, editing, onClose, onSave }: Pro
                   </Pressable>
                 );
               })}
+              {!addingCategory && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setNewCategory('');
+                    setAddingCategory(true);
+                  }}
+                  style={styles.addCategoryChip}
+                >
+                  <MaterialCommunityIcons name="plus" size={14} color={colors.primary} />
+                  <Text style={styles.addCategoryChipText}>Kategori Baru</Text>
+                </Pressable>
+              )}
             </View>
+
+            {addingCategory && (
+              <View style={styles.addCategoryRow}>
+                <TextInput
+                  value={newCategory}
+                  onChangeText={setNewCategory}
+                  placeholder="Nama kategori baru"
+                  placeholderTextColor="#9AA8C2"
+                  style={[styles.input, styles.addCategoryInput]}
+                  autoFocus
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Simpan kategori"
+                  disabled={newCategory.trim().length === 0}
+                  onPress={handleAddCategory}
+                  style={[
+                    styles.addCategoryConfirm,
+                    newCategory.trim().length === 0 && styles.buttonDisabled,
+                  ]}
+                >
+                  <MaterialCommunityIcons name="check" size={18} color={colors.white} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Batal tambah kategori"
+                  onPress={() => setAddingCategory(false)}
+                  style={styles.addCategoryCancel}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            )}
 
             <View style={styles.inputRow}>
               <View style={styles.inputArea}>
                 <Text style={styles.label}>Harga Jual</Text>
                 <TextInput
-                  value={price}
+                  value={price ? Number(price).toLocaleString('id-ID') : ''}
                   onChangeText={(t) => setPrice(onlyDigits(t).slice(0, 7))}
-                  placeholder="25000"
+                  placeholder="25.000"
                   placeholderTextColor="#9AA8C2"
                   keyboardType="number-pad"
                   style={styles.input}
@@ -142,9 +264,9 @@ export default function MenuFormModal({ visible, editing, onClose, onSave }: Pro
               <View style={styles.inputArea}>
                 <Text style={styles.label}>HPP (Cost)</Text>
                 <TextInput
-                  value={costPrice}
+                  value={costPrice ? Number(costPrice).toLocaleString('id-ID') : ''}
                   onChangeText={(t) => setCostPrice(onlyDigits(t).slice(0, 7))}
-                  placeholder="14000"
+                  placeholder="14.000"
                   placeholderTextColor="#9AA8C2"
                   keyboardType="number-pad"
                   style={styles.input}
@@ -173,6 +295,85 @@ export default function MenuFormModal({ visible, editing, onClose, onSave }: Pro
                 </View>
               </View>
             </View>
+
+            <Text style={styles.subSectionTitle}>Varian (Opsional)</Text>
+            {variants.map((v, index) => (
+              <View key={index} style={styles.draftRow}>
+                <TextInput
+                  value={v.name}
+                  onChangeText={(text) => updateVariantRow(index, { name: text })}
+                  placeholder="Contoh: Porsi Jumbo"
+                  placeholderTextColor="#9AA8C2"
+                  style={[styles.input, styles.draftNameInput]}
+                />
+                <TextInput
+                  value={v.priceExtra}
+                  onChangeText={(text) =>
+                    updateVariantRow(index, {
+                      priceExtra: text.replace(/[^0-9-]/g, '').slice(0, 7),
+                    })
+                  }
+                  placeholder="+10000"
+                  placeholderTextColor="#9AA8C2"
+                  style={[styles.input, styles.draftPriceInput]}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Hapus varian"
+                  onPress={() => removeVariantRow(index)}
+                  style={styles.draftRemove}
+                >
+                  <MaterialCommunityIcons name="close" size={16} color={colors.danger} />
+                </Pressable>
+              </View>
+            ))}
+            <Pressable
+              accessibilityRole="button"
+              onPress={addVariantRow}
+              style={styles.addDraftButton}
+            >
+              <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+              <Text style={styles.addDraftButtonText}>Tambah Varian</Text>
+            </Pressable>
+
+            <Text style={styles.subSectionTitle}>Tambahan / Add-ons (Opsional)</Text>
+            {addons.map((a, index) => (
+              <View key={index} style={styles.draftRow}>
+                <TextInput
+                  value={a.name}
+                  onChangeText={(text) => updateAddonRow(index, { name: text })}
+                  placeholder="Contoh: Tambah Kulit"
+                  placeholderTextColor="#9AA8C2"
+                  style={[styles.input, styles.draftNameInput]}
+                />
+                <TextInput
+                  value={a.price}
+                  onChangeText={(text) =>
+                    updateAddonRow(index, { price: onlyDigits(text).slice(0, 7) })
+                  }
+                  placeholder="5000"
+                  placeholderTextColor="#9AA8C2"
+                  keyboardType="number-pad"
+                  style={[styles.input, styles.draftPriceInput]}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Hapus tambahan"
+                  onPress={() => removeAddonRow(index)}
+                  style={styles.draftRemove}
+                >
+                  <MaterialCommunityIcons name="close" size={16} color={colors.danger} />
+                </Pressable>
+              </View>
+            ))}
+            <Pressable
+              accessibilityRole="button"
+              onPress={addAddonRow}
+              style={styles.addDraftButton}
+            >
+              <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+              <Text style={styles.addDraftButtonText}>Tambah Add-on</Text>
+            </Pressable>
 
             <View style={styles.switchRow}>
               <View style={styles.switchTextArea}>
@@ -295,6 +496,50 @@ const styles = StyleSheet.create({
   categoryChipTextSelected: {
     color: colors.white,
   },
+  addCategoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  addCategoryChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  addCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  addCategoryInput: {
+    flex: 1,
+  },
+  addCategoryConfirm: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addCategoryCancel: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   inputRow: {
     flexDirection: 'row',
     gap: 10,
@@ -319,6 +564,50 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
+  },
+  subSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  draftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  draftNameInput: {
+    flex: 1,
+  },
+  draftPriceInput: {
+    width: 110,
+  },
+  draftRemove: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addDraftButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 9,
+    marginTop: 2,
+  },
+  addDraftButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
   switchTextArea: {
     flex: 1,

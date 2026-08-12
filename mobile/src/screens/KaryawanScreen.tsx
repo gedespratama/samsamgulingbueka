@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AddKaryawanModal, { type NewEmployee } from '../components/AddKaryawanModal';
 import { employeeRepo } from '../db/repositories';
 import { useDbList } from '../db/useDbList';
+import { useCashier } from '../context/CashierContext';
 import { roleOptions, type Employee, type EmployeeRole } from '../data/mock';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
@@ -23,9 +24,30 @@ const roleMeta: Record<EmployeeRole, { icon: IconName; tint: string; color: stri
 export default function KaryawanScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: employees, refresh } = useDbList(employeeRepo.getAll);
+  const { cashier } = useCashier();
   const [modalVisible, setModalVisible] = useState(false);
+  const [editing, setEditing] = useState<Employee | null>(null);
+
+  const isOwner = cashier?.role === 'pemilik';
 
   const handleSave = async (data: NewEmployee) => {
+    if (editing) {
+      await employeeRepo.update({
+        ...editing,
+        name: data.name,
+        role: data.role,
+        pin: data.pin || editing.pin,
+      });
+      await refresh();
+      setModalVisible(false);
+      setEditing(null);
+      const pinChanged = data.pin.length > 0;
+      Alert.alert(
+        'Berhasil',
+        `${data.name} berhasil diperbarui${pinChanged ? ' dan PIN di-reset.' : '.'}`
+      );
+      return;
+    }
     const id = `emp-${Date.now()}`;
     await employeeRepo.create(
       { name: data.name, role: data.role, pin: data.pin, active: true },
@@ -35,6 +57,59 @@ export default function KaryawanScreen() {
     setModalVisible(false);
     Alert.alert('Berhasil', `${data.name} ditambahkan sebagai ${roleOptions[data.role].label}.`);
   };
+
+  const handleDelete = (employee: Employee) => {
+    Alert.alert(
+      'Hapus Karyawan',
+      `Hapus profil karyawan ${employee.name}?\n\nProfil akan dihapus permanen dan tidak bisa login lagi.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Hapus',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await employeeRepo.remove(employee.id);
+              await refresh();
+              Alert.alert('Berhasil', `${employee.name} berhasil dihapus.`);
+            } catch {
+              Alert.alert('Gagal', 'Gagal menghapus karyawan. Silakan coba lagi.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (!isOwner) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Kembali"
+            onPress={() => navigation.goBack()}
+            style={styles.headerButton}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={22} color={colors.text} />
+          </Pressable>
+          <View style={styles.headerTextArea}>
+            <Text style={styles.title}>Karyawan</Text>
+            <Text style={styles.subtitle}>Manajemen karyawan warung</Text>
+          </View>
+        </View>
+        <View style={styles.restricted}>
+          <View style={styles.restrictedIcon}>
+            <MaterialCommunityIcons name="lock-outline" size={32} color={colors.textMuted} />
+          </View>
+          <Text style={styles.restrictedTitle}>Akses Terbatas</Text>
+          <Text style={styles.restrictedSubtitle}>
+            Hanya profil Pemilik yang dapat mengelola data karyawan.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -54,7 +129,10 @@ export default function KaryawanScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Tambah karyawan"
-          onPress={() => setModalVisible(true)}
+          onPress={() => {
+            setEditing(null);
+            setModalVisible(true);
+          }}
           style={styles.addButton}
         >
           <MaterialCommunityIcons name="plus" size={24} color={colors.white} />
@@ -70,8 +148,9 @@ export default function KaryawanScreen() {
           <View style={styles.banner}>
             <MaterialCommunityIcons name="crown-outline" size={16} color="#D97706" />
             <Text style={styles.bannerText}>
-              Kamu login sebagai <Text style={styles.bannerStrong}>Pemilik</Text> — akses penuh
-              untuk mengelola karyawan.
+              Kamu login sebagai <Text style={styles.bannerStrong}>{cashier?.name}</Text> (
+              {roleOptions[cashier?.role ?? 'kasir'].label}) — akses penuh untuk mengelola
+              karyawan.
             </Text>
           </View>
         }
@@ -100,6 +179,27 @@ export default function KaryawanScreen() {
                   {roleOptions[item.role].label}
                 </Text>
               </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Ubah karyawan ${item.name}`}
+                onPress={() => {
+                  setEditing(item);
+                  setModalVisible(true);
+                }}
+                style={styles.editButton}
+              >
+                <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.textMuted} />
+              </Pressable>
+              {item.role !== 'pemilik' && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Hapus karyawan ${item.name}`}
+                  onPress={() => handleDelete(item)}
+                  style={[styles.editButton, styles.deleteButton]}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.danger} />
+                </Pressable>
+              )}
             </View>
           );
         }}
@@ -107,7 +207,11 @@ export default function KaryawanScreen() {
 
       <AddKaryawanModal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        editing={editing}
+        onClose={() => {
+          setModalVisible(false);
+          setEditing(null);
+        }}
         onSave={handleSave}
       />
     </SafeAreaView>
@@ -218,6 +322,45 @@ const styles = StyleSheet.create({
   roleChipText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  editButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteButton: {
+    backgroundColor: '#FEE2E2',
+  },
+  restricted: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    paddingBottom: 60,
+  },
+  restrictedIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  restrictedTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 16,
+  },
+  restrictedSubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginTop: 6,
   },
   empty: {
     alignItems: 'center',

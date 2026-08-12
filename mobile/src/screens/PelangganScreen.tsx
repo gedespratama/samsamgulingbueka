@@ -27,6 +27,7 @@ export default function PelangganScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: customers, refresh } = useDbList(customerRepo.getAll);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editing, setEditing] = useState<Customer | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -36,10 +37,60 @@ export default function PelangganScreen() {
 
   const handleSave = async () => {
     if (!canSave) return;
+    if (editing) {
+      await customerRepo.update({ ...editing, name: name.trim(), phone: phone.trim() });
+      await refresh();
+      setModalVisible(false);
+      setEditing(null);
+      Alert.alert('Berhasil', `Data ${name.trim()} berhasil diperbarui.`);
+      return;
+    }
     await customerRepo.create({ name: name.trim(), phone: phone.trim() }, `c-${Date.now()}`);
     await refresh();
     setModalVisible(false);
     Alert.alert('Berhasil', `${name.trim()} berhasil ditambahkan sebagai pelanggan.`);
+  };
+
+  const handleDelete = (customer: Customer) => {
+    Alert.alert(
+      'Hapus Pelanggan',
+      `Hapus profil pelanggan ${customer.name}?\n\nData pelanggan akan dihapus permanen.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Hapus',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await customerRepo.remove(customer.id);
+              await refresh();
+              Alert.alert('Berhasil', `${customer.name} berhasil dihapus.`);
+            } catch {
+              Alert.alert('Gagal', 'Gagal menghapus pelanggan. Silakan coba lagi.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openAdd = () => {
+    setEditing(null);
+    setName('');
+    setPhone('');
+    setModalVisible(true);
+  };
+
+  const openEdit = (customer: Customer) => {
+    setEditing(customer);
+    setName(customer.name);
+    setPhone(customer.phone);
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditing(null);
   };
 
   return (
@@ -60,11 +111,7 @@ export default function PelangganScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Tambah pelanggan"
-          onPress={() => {
-            setName('');
-            setPhone('');
-            setModalVisible(true);
-          }}
+          onPress={openAdd}
           style={styles.addButton}
         >
           <MaterialCommunityIcons name="plus" size={24} color={colors.white} />
@@ -101,25 +148,40 @@ export default function PelangganScreen() {
                     <Text style={styles.cardPhoneMuted}>Belum ada nomor HP</Text>
                   )}
                 </View>
-                <View style={styles.cardIcon}>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color="#B8C7E8" />
-                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ubah pelanggan ${customer.name}`}
+                  onPress={() => openEdit(customer)}
+                  style={styles.cardAction}
+                >
+                  <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.textMuted} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Hapus pelanggan ${customer.name}`}
+                  onPress={() => handleDelete(customer)}
+                  style={[styles.cardAction, styles.cardActionDanger]}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.danger} />
+                </Pressable>
               </View>
             );
           })
         )}
       </ScrollView>
 
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={closeModal}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <Pressable style={styles.backdrop} onPress={() => setModalVisible(false)} accessibilityRole="button" />
+          <Pressable style={styles.backdrop} onPress={closeModal} accessibilityRole="button" />
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Tambah Pelanggan</Text>
+              <Text style={styles.sheetTitle}>
+                {editing ? 'Ubah Pelanggan' : 'Tambah Pelanggan'}
+              </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Tutup"
-                onPress={() => setModalVisible(false)}
+                onPress={closeModal}
                 style={styles.closeButton}
               >
                 <MaterialCommunityIcons name="close" size={20} color={colors.textMuted} />
@@ -145,7 +207,7 @@ export default function PelangganScreen() {
             <View style={styles.actionRow}>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => setModalVisible(false)}
+                onPress={closeModal}
                 style={[styles.button, styles.buttonSecondary]}
               >
                 <Text style={styles.buttonSecondaryText}>Batal</Text>
@@ -252,13 +314,16 @@ const styles = StyleSheet.create({
     color: '#9AA8C2',
     marginTop: 2,
   },
-  cardIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+  cardAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cardActionDanger: {
+    backgroundColor: '#FEE2E2',
   },
   overlay: {
     flex: 1,

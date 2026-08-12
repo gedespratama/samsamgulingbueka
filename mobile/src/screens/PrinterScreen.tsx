@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { usePrinter } from '../context/PrinterContext';
 import type { PrinterDevice } from '../services/printer';
@@ -11,14 +11,69 @@ import type { RootStackParamList } from '../navigation/types';
 
 export default function PrinterScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { status, device, scanning, devices, scanDevices, connect, disconnect, testPrint } = usePrinter();
+  const {
+    status,
+    device,
+    scanning,
+    devices,
+    bluetoothEnabled,
+    checkBluetooth,
+    scanDevices,
+    connect,
+    disconnect,
+    testPrint,
+  } = usePrinter();
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
 
   const isConnected = status === 'connected';
 
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        const enabled = await checkBluetooth();
+        if (!active) return;
+        if (!enabled) {
+          Alert.alert(
+            'Bluetooth Belum Aktif',
+            'Aktifkan Bluetooth pada perangkat untuk mencari printer terdekat.'
+          );
+          return;
+        }
+        try {
+          await scanDevices();
+        } catch (error) {
+          Alert.alert(
+            'Gagal Scan',
+            error instanceof Error ? error.message : 'Terjadi kesalahan saat memindai perangkat.'
+          );
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [checkBluetooth, scanDevices])
+  );
+
   const handleScan = async () => {
-    await scanDevices();
+    const enabled = bluetoothEnabled ?? (await checkBluetooth());
+    if (!enabled) {
+      Alert.alert(
+        'Bluetooth Belum Aktif',
+        'Aktifkan Bluetooth pada perangkat untuk mencari printer terdekat.'
+      );
+      return;
+    }
+    try {
+      await scanDevices();
+    } catch (error) {
+      Alert.alert(
+        'Gagal Scan',
+        error instanceof Error ? error.message : 'Terjadi kesalahan saat memindai perangkat.'
+      );
+      return;
+    }
     if (devices.length === 0) {
       Alert.alert('Scan Selesai', 'Tidak ada perangkat ditemukan. Pastikan printer menyala.');
     }
@@ -113,6 +168,18 @@ export default function PrinterScreen() {
             )}
           </View>
         </View>
+
+        {bluetoothEnabled === false && (
+          <View style={styles.btWarning}>
+            <MaterialCommunityIcons name="bluetooth-off" size={18} color={colors.warning} />
+            <View style={styles.btWarningTextArea}>
+              <Text style={styles.btWarningTitle}>Bluetooth Belum Aktif</Text>
+              <Text style={styles.btWarningText}>
+                Aktifkan Bluetooth pada perangkat untuk mencari printer terdekat.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {isConnected ? (
           <View style={styles.connectedArea}>
@@ -329,6 +396,30 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     marginBottom: 6,
+  },
+  btWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.warningSoft,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  btWarningTextArea: {
+    flex: 1,
+  },
+  btWarningTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.warning,
+  },
+  btWarningText: {
+    fontSize: 11,
+    color: colors.warning,
+    marginTop: 2,
+    lineHeight: 16,
   },
   deviceCard: {
     flexDirection: 'row',

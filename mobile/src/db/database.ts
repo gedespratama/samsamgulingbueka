@@ -2,13 +2,16 @@ import * as SQLite from 'expo-sqlite';
 import { seedIfEmpty } from './seed';
 
 const DB_NAME = 'kasir.db';
-const DB_VERSION = 1;
+const DB_VERSION = 6;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = init();
+    dbPromise = init().catch((err) => {
+      dbPromise = null;
+      throw err;
+    });
   }
   return dbPromise;
 }
@@ -133,6 +136,52 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         created_at TEXT NOT NULL
       );
     `);
-    await db.execAsync(`PRAGMA user_version = ${DB_VERSION}`);
+    await db.execAsync(`PRAGMA user_version = 1`);
+  }
+
+  if (currentVersion < 2) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+    `);
+    await db.execAsync(`PRAGMA user_version = 2`);
+  }
+
+  if (currentVersion < 3) {
+    await db.execAsync("ALTER TABLE orders ADD COLUMN voided INTEGER NOT NULL DEFAULT 0");
+    await db.execAsync(`PRAGMA user_version = 3`);
+  }
+
+  if (currentVersion < 4) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS cash_shifts (
+        id TEXT PRIMARY KEY NOT NULL,
+        opened_at TEXT NOT NULL,
+        opening_balance INTEGER NOT NULL DEFAULT 0,
+        closed_at TEXT
+      );
+    `);
+    await db.execAsync(`PRAGMA user_version = 4`);
+  }
+
+  if (currentVersion < 5) {
+    await db.execAsync("ALTER TABLE cash_records ADD COLUMN shift_id TEXT");
+    await db.execAsync(`PRAGMA user_version = 5`);
+  }
+
+  if (currentVersion < 6) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );
+    `);
+    await db.execAsync(`PRAGMA user_version = 6`);
   }
 }

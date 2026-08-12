@@ -9,6 +9,8 @@ interface PrinterContextValue {
   device: PrinterDevice | null;
   scanning: boolean;
   devices: PrinterDevice[];
+  bluetoothEnabled: boolean | null;
+  checkBluetooth: () => Promise<boolean>;
   scanDevices: () => Promise<void>;
   connect: (device: PrinterDevice) => Promise<void>;
   disconnect: () => Promise<void>;
@@ -22,6 +24,13 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
   const [device, setDevice] = useState<PrinterDevice | null>(null);
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<PrinterDevice[]>([]);
+  const [bluetoothEnabled, setBluetoothEnabled] = useState<boolean | null>(null);
+
+  const checkBluetooth = useCallback(async () => {
+    const enabled = await printerService.isBluetoothEnabled();
+    setBluetoothEnabled(enabled);
+    return enabled;
+  }, []);
 
   const scanDevices = useCallback(async () => {
     setScanning(true);
@@ -57,8 +66,30 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
   }, [device]);
 
   const value = useMemo(
-    () => ({ status, device, scanning, devices, scanDevices, connect, disconnect, testPrint }),
-    [status, device, scanning, devices, scanDevices, connect, disconnect, testPrint]
+    () => ({
+      status,
+      device,
+      scanning,
+      devices,
+      bluetoothEnabled,
+      checkBluetooth,
+      scanDevices,
+      connect,
+      disconnect,
+      testPrint,
+    }),
+    [
+      status,
+      device,
+      scanning,
+      devices,
+      bluetoothEnabled,
+      checkBluetooth,
+      scanDevices,
+      connect,
+      disconnect,
+      testPrint,
+    ]
   );
 
   return <PrinterContext.Provider value={value}>{children}</PrinterContext.Provider>;

@@ -6,13 +6,17 @@ import {
   employeeSeed,
   menuCategories,
   menuSeed,
+  notificationsSeed,
   supplierDebtsSeed,
   transactionsSeed,
 } from '../data/mock';
 
 export async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM menus');
-  if ((row?.count ?? 0) > 0) return;
+  if ((row?.count ?? 0) > 0) {
+    await seedNotificationsIfEmpty(db);
+    return;
+  }
 
   const now = new Date().toISOString();
 
@@ -145,6 +149,27 @@ export async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
           t.createdAt
         );
       }
+    }
+  });
+
+  await seedNotificationsIfEmpty(db);
+}
+
+async function seedNotificationsIfEmpty(db: SQLiteDatabase): Promise<void> {
+  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM notifications');
+  if ((row?.count ?? 0) > 0) return;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    for (const n of notificationsSeed) {
+      await txn.runAsync(
+        'INSERT INTO notifications (id, type, title, message, read, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        n.id,
+        n.type,
+        n.title,
+        n.message,
+        n.read ? 1 : 0,
+        n.createdAt
+      );
     }
   });
 }

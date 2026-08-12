@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import EmptyState from '../components/ui/EmptyState';
 import QuantityStepper from '../components/ui/QuantityStepper';
 import { useCart } from '../context/CartContext';
+import { useCashier } from '../context/CashierContext';
 import { usePrinter } from '../context/PrinterContext';
 import { orderRepo, syncRepo } from '../db/repositories';
 import { paymentMethodMeta, type PaymentMethodKey, type Transaction } from '../data/mock';
@@ -44,6 +45,7 @@ export default function CheckoutScreen() {
   const [orderId, setOrderId] = useState('');
   const [printing, setPrinting] = useState(false);
   const { status: printerStatus } = usePrinter();
+  const { cashier } = useCashier();
 
   useBlurOnClose(successVisible);
 
@@ -103,6 +105,7 @@ export default function CheckoutScreen() {
         paymentMethod: method,
         transactionType: 'offline',
         paidAmount,
+        cashierName: cashier?.name,
       });
     } catch {
       Alert.alert('Gagal', 'Gagal membuat PDF struk. Silakan coba lagi.');
@@ -215,9 +218,9 @@ export default function CheckoutScreen() {
                   <Text style={styles.sectionLabel}>Uang Diterima</Text>
                   <View style={styles.cashRow}>
                     <TextInput
-                      value={cashPaid}
-                      onChangeText={(t) => setCashPaid(t.replace(/[^0-9]/g, ''))}
-                      placeholder="Contoh: 50000"
+                      value={cashPaid ? Number(cashPaid).toLocaleString('id-ID') : ''}
+                      onChangeText={(t) => setCashPaid(t.replace(/[^0-9]/g, '').slice(0, 9))}
+                      placeholder="Contoh: 50.000"
                       placeholderTextColor="#9AA8C2"
                       keyboardType="number-pad"
                       style={styles.cashInput}

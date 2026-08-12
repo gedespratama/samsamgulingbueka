@@ -1,44 +1,78 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FilterChips from '../components/ui/FilterChips';
-import { laporanMethods, weeklySalesChart } from '../data/mock';
+import RestrictedAccess from '../components/ui/RestrictedAccess';
+import {
+  laporanRepo,
+  type DailySale,
+  type LaporanRangeKey,
+  type RangeSummary,
+  type WeeklySalesRow,
+} from '../db/repositories';
+import { useCashier } from '../context/CashierContext';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
 import type { RootStackParamList } from '../navigation/types';
-
-type RangeKey = 'hari_ini' | '7_hari' | 'bulan_ini';
 
 const rangeOptions = [
   { key: 'hari_ini', label: 'Hari Ini' },
   { key: '7_hari', label: '7 Hari Terakhir' },
   { key: 'bulan_ini', label: 'Bulan Ini' },
-] as { key: RangeKey; label: string }[];
+] as { key: LaporanRangeKey; label: string }[];
 
-const rangeTotals: Record<RangeKey, { total: number; count: number }> = {
-  hari_ini: { total: 1_285_000, count: 12 },
-  '7_hari': { total: 9_805_000, count: 98 },
-  bulan_ini: { total: 42_750_000, count: 421 },
-};
+const emptySummary: RangeSummary = { total: 0, count: 0 };
 
-const rangeMethods: Record<RangeKey, number[]> = {
-  hari_ini: [620_000, 385_000, 180_000, 100_000],
-  '7_hari': [4_620_000, 2_940_000, 1_795_000, 450_000],
-  bulan_ini: [19_200_000, 12_850_000, 8_100_000, 2_600_000],
-};
+const emptyMethods: WeeklySalesRow[] = [
+  { key: 'tunai', label: 'Tunai', total: 0, count: 0, dotColor: '#16A34A' },
+  { key: 'qris', label: 'QRIS', total: 0, count: 0, dotColor: '#0284C7' },
+  { key: 'transfer', label: 'Transfer', total: 0, count: 0, dotColor: '#7C3AED' },
+  { key: 'hutang', label: 'Hutang', total: 0, count: 0, dotColor: '#DC2626' },
+];
+
+const emptyDaily: DailySale[] = [];
 
 export default function LaporanScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [range, setRange] = useState<RangeKey>('hari_ini');
+  const { cashier } = useCashier();
+  const [range, setRange] = useState<LaporanRangeKey>('hari_ini');
+  const [summary, setSummary] = useState<RangeSummary>(emptySummary);
+  const [methods, setMethods] = useState<WeeklySalesRow[]>(emptyMethods);
+  const [daily, setDaily] = useState<DailySale[]>(emptyDaily);
 
-  const summary = rangeTotals[range];
-  const methods = laporanMethods.map((m, i) => ({ ...m, amount: rangeMethods[range][i] }));
-  const offlineTotal = methods.find((m) => m.key === 'tunai')?.amount ?? 0;
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all([laporanRepo.getRangeSummary(range), laporanRepo.getRangeMethods(range), laporanRepo.getDailySales()])
+        .then(([s, m, d]) => {
+          if (active) {
+            setSummary(s);
+            setMethods(m);
+            setDaily(d);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [range])
+  );
+
+  if (cashier?.role === 'kasir') {
+    return (
+      <RestrictedAccess
+        message="Hanya profil Pemilik dan Admin yang dapat melihat laporan penjualan."
+        onBack={() => navigation.goBack()}
+      />
+    );
+  }
+
+  const offlineTotal = methods.find((m) => m.key === 'tunai')?.total ?? 0;
   const onlineTotal = summary.total - offlineTotal;
-  const maxBar = Math.max(...weeklySalesChart.map((d) => d.total));
+  const maxBar = Math.max(...daily.map((d) => d.total), 1);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -74,16 +108,16 @@ export default function LaporanScreen() {
         </View>
         <View style={styles.methodCard}>
           {methods.map((m) => {
-            const pct = summary.total > 0 ? Math.round((m.amount / summary.total) * 100) : 0;
+            const pct = summary.total > 0 ? Math.round((m.total / summary.total) * 100) : 0;
             return (
               <View key={m.key} style={styles.methodRow}>
                 <View style={styles.methodTop}>
-                  <View style={[styles.methodDot, { backgroundColor: m.color }]} />
+                  <View style={[styles.methodDot, { backgroundColor: m.dotColor }]} />
                   <Text style={styles.methodLabel}>{m.label}</Text>
-                  <Text style={styles.methodAmount}>{formatRupiah(m.amount)}</Text>
+                  <Text style={styles.methodAmount}>{formatRupiah(m.total)}</Text>
                 </View>
                 <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { backgroundColor: m.color, width: `${pct}%` }]} />
+                  <View style={[styles.progressFill, { backgroundColor: m.dotColor, width: `${pct}%` }]} />
                 </View>
               </View>
             );
@@ -111,11 +145,11 @@ export default function LaporanScreen() {
         </View>
         <View style={styles.chartCard}>
           <View style={styles.chartArea}>
-            {weeklySalesChart.map((day, index) => {
+            {daily.map((day, index) => {
               const height = Math.max(10, (day.total / maxBar) * 140);
-              const isToday = index === weeklySalesChart.length - 1;
+              const isToday = index === daily.length - 1;
               return (
-                <View key={day.label} style={styles.barColumn}>
+                <View key={day.label + index} style={styles.barColumn}>
                   <Text style={styles.barValue}>{formatRupiah(day.total)}</Text>
                   <View
                     style={[

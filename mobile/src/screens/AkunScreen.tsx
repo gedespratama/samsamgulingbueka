@@ -6,11 +6,27 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { usePrinter } from '../context/PrinterContext';
 import { useSync } from '../context/SyncContext';
+import { useCashier } from '../context/CashierContext';
+import { roleOptions, type EmployeeRole } from '../data/mock';
 import { colors } from '../theme';
 import { timeAgo } from '../utils/time';
 import type { RootStackParamList } from '../navigation/types';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+const roleMeta: Record<EmployeeRole, { icon: IconName; tint: string; color: string }> = {
+  kasir: { icon: 'cash-register', tint: colors.primarySoft, color: colors.primary },
+  admin: { icon: 'clipboard-edit-outline', tint: '#EDE9FE', color: '#7C3AED' },
+  pemilik: { icon: 'crown-outline', tint: '#FEF3C7', color: '#D97706' },
+};
+
+const initials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
 
 interface MenuRow {
   key: string;
@@ -34,6 +50,10 @@ export default function AkunScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { status, device } = usePrinter();
   const { lastSyncedAt, pendingIds } = useSync();
+  const { cashier, lock } = useCashier();
+
+  const role = cashier?.role ?? 'kasir';
+  const roleMetaValue = roleMeta[role];
 
   const handlePress = (row: MenuRow) => {
     if (row.route) {
@@ -44,9 +64,9 @@ export default function AkunScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert('Keluar', 'Yakin ingin keluar dari aplikasi?', [
+    Alert.alert('Keluar', 'Yakin ingin keluar dan mengunci aplikasi?', [
       { text: 'Batal', style: 'cancel' },
-      { text: 'Keluar', style: 'destructive', onPress: () => undefined },
+      { text: 'Keluar', style: 'destructive', onPress: () => lock() },
     ]);
   };
 
@@ -55,15 +75,19 @@ export default function AkunScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>BE</Text>
+            <Text style={styles.avatarText}>{initials(cashier?.name ?? '') || 'KS'}</Text>
           </View>
           <View style={styles.profileTextArea}>
-            <Text style={styles.profileName}>Bu Eka</Text>
-            <Text style={styles.profileRole}>Pemilik - Samsam Guling Bu Eka</Text>
+            <Text style={styles.profileName}>{cashier?.name ?? 'Kasir'}</Text>
+            <Text style={styles.profileRole}>
+              {roleOptions[role].label} - Samsam Guling Bu Eka
+            </Text>
           </View>
-          <View style={styles.roleBadge}>
-            <MaterialCommunityIcons name="crown-outline" size={14} color="#D97706" />
-            <Text style={styles.roleBadgeText}>Pemilik</Text>
+          <View style={[styles.roleBadge, { backgroundColor: roleMetaValue.tint }]}>
+            <MaterialCommunityIcons name={roleMetaValue.icon} size={14} color={roleMetaValue.color} />
+            <Text style={[styles.roleBadgeText, { color: roleMetaValue.color }]}>
+              {roleOptions[role].label}
+            </Text>
           </View>
         </View>
 

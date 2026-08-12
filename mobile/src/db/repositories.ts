@@ -52,6 +52,7 @@ interface OrderRow {
   payment_method: PaymentMethodKey;
   transaction_type: 'offline' | 'online';
   sync_status: 'pending' | 'synced';
+  voided: number;
   created_at: string;
 }
 
@@ -100,6 +101,13 @@ export const categoryRepo = {
   async getAll(): Promise<{ id: string; name: string }[]> {
     const db = await getDb();
     return db.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM categories ORDER BY rowid');
+  },
+
+  async create(name: string): Promise<{ id: string; name: string }> {
+    const db = await getDb();
+    const id = `cat-${Date.now()}`;
+    await db.runAsync('INSERT INTO categories (id, name) VALUES (?, ?)', id, name);
+    return { id, name };
   },
 };
 
@@ -232,6 +240,22 @@ export const employeeRepo = {
       new Date().toISOString()
     );
   },
+
+  async update(employee: Employee): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+      'UPDATE employees SET name = ?, role = ?, pin = ? WHERE id = ?',
+      employee.name,
+      employee.role,
+      employee.pin,
+      employee.id
+    );
+  },
+
+  async remove(id: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync('DELETE FROM employees WHERE id = ?', id);
+  },
 };
 
 export const customerRepo = {
@@ -249,6 +273,21 @@ export const customerRepo = {
       data.phone,
       new Date().toISOString()
     );
+  },
+
+  async update(customer: Customer): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+      'UPDATE customers SET name = ?, phone = ? WHERE id = ?',
+      customer.name,
+      customer.phone,
+      customer.id
+    );
+  },
+
+  async remove(id: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync('DELETE FROM customers WHERE id = ?', id);
   },
 };
 
@@ -322,21 +361,41 @@ export const debtRepo = {
   },
 };
 
+interface CashRecordRow {
+  id: string;
+  type: 'masuk' | 'keluar' | 'shift';
+  title: string;
+  amount: number;
+  created_at: string;
+  shift_id: string | null;
+}
+
 export const cashRecordRepo = {
   async getAll(): Promise<CashRecord[]> {
     const db = await getDb();
-    return db.getAllAsync<CashRecord>('SELECT id, type, title, amount, created_at FROM cash_records ORDER BY datetime(created_at) DESC');
+    const rows = await db.getAllAsync<CashRecordRow>(
+      'SELECT id, type, title, amount, created_at, shift_id FROM cash_records ORDER BY datetime(created_at) DESC'
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      amount: r.amount,
+      createdAt: r.created_at,
+      shiftId: r.shift_id,
+    }));
   },
 
-  async create(data: Omit<CashRecord, 'id'>, id: string): Promise<void> {
+  async create(data: Omit<CashRecord, 'id'>, id: string, shiftId?: string | null): Promise<void> {
     const db = await getDb();
     await db.runAsync(
-      'INSERT INTO cash_records (id, type, title, amount, created_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO cash_records (id, type, title, amount, created_at, shift_id) VALUES (?, ?, ?, ?, ?, ?)',
       id,
       data.type,
       data.title,
       data.amount,
-      data.createdAt
+      data.createdAt,
+      shiftId ?? null
     );
   },
 };
@@ -411,6 +470,7 @@ export const orderRepo = {
       paymentMethod: row.payment_method,
       transactionType: row.transaction_type,
       syncStatus: row.sync_status,
+      voided: bool(row.voided),
       createdAt: row.created_at,
       items: itemRows
         .filter((i) => i.order_id === row.id)
@@ -426,10 +486,18 @@ export const orderRepo = {
     }));
   },
 
+  async void(id: string): Promise<void> {
+    const db = await getDb();
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.runAsync('UPDATE orders SET voided = 1 WHERE id = ?', id);
+      await txn.runAsync('DELETE FROM pending_sync WHERE entity_id = ?', id);
+    });
+  },
+
   async getTodaySummary(): Promise<DaySummary> {
     const orders = await this.getAll();
     const now = new Date();
-    const todayOrders = orders.filter((o) => isSameLocalDay(new Date(o.createdAt), now));
+    const todayOrders = orders.filter((o) => !o.voided && isSameLocalDay(new Date(o.createdAt), now));
     const total = todayOrders.reduce((sum, o) => sum + o.totalAmount, 0);
     const count = todayOrders.length;
     const methods: PaymentMethodKey[] = ['tunai', 'qris', 'transfer', 'hutang'];
@@ -452,7 +520,7 @@ export const orderRepo = {
     const orders = await this.getAll();
     const now = Date.now();
     const weekOrders = orders.filter(
-      (o) => now - new Date(o.createdAt).getTime() <= 7 * 86_400_000
+      (o) => !o.voided && now - new Date(o.createdAt).getTime() <= 7 * 86_400_000
     );
     const methods: PaymentMethodKey[] = ['tunai', 'qris', 'transfer', 'hutang'];
     const rows: WeeklySalesRow[] = methods.map((key) => ({
@@ -507,5 +575,231 @@ export const syncRepo = {
       }
     });
     return pending.length;
+  },
+};
+
+interface NotificationRow {
+  id: string;
+  type: 'warning' | 'danger' | 'success' | 'info';
+  title: string;
+  message: string;
+  read: number;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'warning' | 'danger' | 'success' | 'info';
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export const notificationRepo = {
+  async getAll(): Promise<AppNotification[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<NotificationRow>(
+      'SELECT id, type, title, message, read, created_at FROM notifications ORDER BY datetime(created_at) DESC'
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      message: r.message,
+      read: bool(r.read),
+      createdAt: r.created_at,
+    }));
+  },
+
+  async markRead(id: string, read: boolean): Promise<void> {
+    const db = await getDb();
+    await db.runAsync('UPDATE notifications SET read = ? WHERE id = ?', read ? 1 : 0, id);
+  },
+
+  async markAllRead(): Promise<void> {
+    const db = await getDb();
+    await db.runAsync("UPDATE notifications SET read = 1 WHERE read = 0");
+  },
+
+  async create(data: Omit<AppNotification, 'id'>, id: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+      'INSERT INTO notifications (id, type, title, message, read, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      id,
+      data.type,
+      data.title,
+      data.message,
+      data.read ? 1 : 0,
+      data.createdAt
+    );
+  },
+};
+
+export type LaporanRangeKey = 'hari_ini' | '7_hari' | 'bulan_ini';
+
+interface ShiftRow {
+  id: string;
+  opened_at: string;
+  opening_balance: number;
+  closed_at: string | null;
+}
+
+interface SettingRow {
+  key: string;
+  value: string;
+}
+
+export const settingsRepo = {
+  async get(key: string): Promise<string | null> {
+    const db = await getDb();
+    const row = await db.getFirstAsync<SettingRow>('SELECT value FROM settings WHERE key = ?', key);
+    return row?.value ?? null;
+  },
+
+  async set(key: string, value: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+      key,
+      value
+    );
+  },
+};export interface CashShift {
+  id: string;
+  openedAt: string;
+  openingBalance: number;
+  closedAt: string | null;
+}
+
+export interface ShiftHistoryEntry {
+  id: string;
+  openedAt: string;
+  closedAt: string | null;
+  openingBalance: number;
+  actualBalance: number | null;
+  net: number;
+  difference: number | null;
+}
+
+export const shiftRepo = {
+  async getActive(): Promise<CashShift | null> {
+    const db = await getDb();
+    const row = await db.getFirstAsync<ShiftRow>(
+      "SELECT id, opened_at, opening_balance, closed_at FROM cash_shifts WHERE closed_at IS NULL ORDER BY datetime(opened_at) DESC LIMIT 1"
+    );
+    if (!row) return null;
+    return {
+      id: row.id,
+      openedAt: row.opened_at,
+      openingBalance: row.opening_balance,
+      closedAt: row.closed_at,
+    };
+  },
+
+  async open(openingBalance: number): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+      'INSERT INTO cash_shifts (id, opened_at, opening_balance, closed_at) VALUES (?, ?, ?, NULL)',
+      `shift-${Date.now()}`,
+      new Date().toISOString(),
+      openingBalance
+    );
+  },
+
+  async close(): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+      "UPDATE cash_shifts SET closed_at = ? WHERE closed_at IS NULL",
+      new Date().toISOString()
+    );
+  },
+
+  async getHistory(): Promise<ShiftHistoryEntry[]> {
+    const db = await getDb();
+    const shiftRows = await db.getAllAsync<ShiftRow>(
+      'SELECT * FROM cash_shifts WHERE closed_at IS NOT NULL ORDER BY datetime(opened_at) DESC'
+    );
+    const recordRows = await db.getAllAsync<CashRecordRow>(
+      'SELECT id, type, title, amount, created_at, shift_id FROM cash_records'
+    );
+    return shiftRows.map((s) => {
+      const shiftRecords = recordRows.filter((r) => r.shift_id === s.id);
+      const net = shiftRecords
+        .filter((r) => r.type === 'masuk' || r.type === 'keluar')
+        .reduce((sum, r) => sum + (r.type === 'masuk' ? r.amount : -r.amount), 0);
+      const closing = shiftRecords.find((r) => r.type === 'shift');
+      const actualBalance = closing ? closing.amount : null;
+      return {
+        id: s.id,
+        openedAt: s.opened_at,
+        closedAt: s.closed_at,
+        openingBalance: s.opening_balance,
+        actualBalance,
+        net,
+        difference: actualBalance !== null ? actualBalance - (s.opening_balance + net) : null,
+      };
+    });
+  },
+};export interface RangeSummary {
+  total: number;
+  count: number;
+}
+
+export interface DailySale {
+  label: string;
+  total: number;
+}
+
+function ordersInRange(orders: Transaction[], range: LaporanRangeKey): Transaction[] {
+  const now = new Date();
+  return orders.filter((o) => {
+    if (o.voided) return false;
+    const d = new Date(o.createdAt);
+    if (Number.isNaN(d.getTime())) return false;
+    if (range === 'hari_ini') return isSameLocalDay(d, now);
+    if (range === '7_hari') return now.getTime() - d.getTime() <= 7 * 86_400_000;
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  });
+}
+
+const dayLabel = new Intl.DateTimeFormat('id-ID', { weekday: 'short' });
+
+export const laporanRepo = {
+  async getRangeSummary(range: LaporanRangeKey): Promise<RangeSummary> {
+    const orders = await orderRepo.getAll();
+    const filtered = ordersInRange(orders, range);
+    return {
+      total: filtered.reduce((sum, o) => sum + o.totalAmount, 0),
+      count: filtered.length,
+    };
+  },
+
+  async getRangeMethods(range: LaporanRangeKey): Promise<WeeklySalesRow[]> {
+    const orders = await orderRepo.getAll();
+    const filtered = ordersInRange(orders, range);
+    const methods: PaymentMethodKey[] = ['tunai', 'qris', 'transfer', 'hutang'];
+    return methods.map((key) => ({
+      key,
+      label: paymentMethodMeta[key].label,
+      total: filtered.filter((o) => o.paymentMethod === key).reduce((sum, o) => sum + o.totalAmount, 0),
+      count: filtered.filter((o) => o.paymentMethod === key).length,
+      dotColor: methodColors[key],
+    }));
+  },
+
+  async getDailySales(): Promise<DailySale[]> {
+    const orders = await orderRepo.getAll();
+    const days: DailySale[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(now.getTime() - i * 86_400_000);
+      const label = dayLabel.format(day);
+      const total = orders
+        .filter((o) => !o.voided && isSameLocalDay(new Date(o.createdAt), day))
+        .reduce((sum, o) => sum + o.totalAmount, 0);
+      days.push({ label, total });
+    }
+    return days;
   },
 };

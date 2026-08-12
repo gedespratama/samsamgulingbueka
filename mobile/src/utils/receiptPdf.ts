@@ -22,6 +22,7 @@ export interface ReceiptData {
   paymentMethod: PaymentMethodKey;
   transactionType: 'offline' | 'online';
   paidAmount?: number;
+  cashierName?: string;
 }
 
 const methodLabel: Record<PaymentMethodKey, string> = {
@@ -56,6 +57,8 @@ export function buildReceiptHtml(receipt: ReceiptData): string {
   }).format(new Date(receipt.createdAt));
 
   const orderLine = `${receipt.orderType === 'dine_in' ? 'Dine-in' : 'Takeaway'}${receipt.tableNumber ? ` (Meja ${receipt.tableNumber})` : ''}`;
+
+  const cashierLabel = receipt.cashierName ? esc(`Kasir: ${receipt.cashierName}`) : '';
 
   const paidAmount = receipt.paidAmount ?? receipt.total;
   const change = Math.max(0, paidAmount - receipt.total);
@@ -125,7 +128,7 @@ export function buildReceiptHtml(receipt: ReceiptData): string {
     </div>
     <div class="divider"></div>
     <div class="info"><span>${esc(receipt.orderId)}</span><span>${esc(date)}</span></div>
-    <div class="info"><span>${esc(orderLine)}</span></div>
+    <div class="info"><span>${esc(orderLine)}</span><span>${cashierLabel}</span></div>
     <div class="divider"></div>
     ${itemLines}
     <div class="divider"></div>

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { roleOptions, type EmployeeRole } from '../data/mock';
+import { roleOptions, type Employee, type EmployeeRole } from '../data/mock';
 import { colors } from '../theme';
 import { useBlurOnClose } from '../utils/blur';
 
@@ -31,11 +31,12 @@ export interface NewEmployee {
 
 interface Props {
   visible: boolean;
+  editing: Employee | null;
   onClose: () => void;
   onSave: (data: NewEmployee) => void;
 }
 
-export default function AddKaryawanModal({ visible, onClose, onSave }: Props) {
+export default function AddKaryawanModal({ visible, editing, onClose, onSave }: Props) {
   const [name, setName] = useState('');
   const [role, setRole] = useState<EmployeeRole>('kasir');
   const [pin, setPin] = useState('');
@@ -43,16 +44,20 @@ export default function AddKaryawanModal({ visible, onClose, onSave }: Props) {
 
   useEffect(() => {
     if (visible) {
-      setName('');
-      setRole('kasir');
+      setName(editing?.name ?? '');
+      setRole(editing?.role ?? 'kasir');
       setPin('');
       setShowPin(false);
     }
-  }, [visible]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, editing]);
 
   useBlurOnClose(visible);
 
-  const isPinValid = /^\d{4}$/.test(pin);
+  const isEditing = editing !== null;
+  const pinFilled = pin.length > 0;
+  const pinValid = /^\d{4}$/.test(pin);
+  const isPinValid = isEditing ? !pinFilled || pinValid : pinValid;
   const canSave = name.trim().length > 0 && isPinValid;
 
   const handleSave = () => {
@@ -70,8 +75,12 @@ export default function AddKaryawanModal({ visible, onClose, onSave }: Props) {
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <View>
-              <Text style={styles.sheetTitle}>Tambah Karyawan</Text>
-              <Text style={styles.sheetSubtitle}>Lengkapi data karyawan baru</Text>
+              <Text style={styles.sheetTitle}>
+                {isEditing ? 'Ubah Karyawan' : 'Tambah Karyawan'}
+              </Text>
+              <Text style={styles.sheetSubtitle}>
+                {isEditing ? 'Perbarui data karyawan' : 'Lengkapi data karyawan baru'}
+              </Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -127,12 +136,12 @@ export default function AddKaryawanModal({ visible, onClose, onSave }: Props) {
             })}
           </View>
 
-          <Text style={styles.label}>PIN 4 Digit</Text>
+          <Text style={styles.label}>{isEditing ? 'PIN Baru (Reset PIN)' : 'PIN 4 Digit'}</Text>
           <View style={styles.pinRow}>
             <TextInput
               value={pin}
               onChangeText={(text) => setPin(text.replace(/[^0-9]/g, '').slice(0, 4))}
-              placeholder="****"
+              placeholder={isEditing ? 'Kosongkan jika tetap' : '****'}
               placeholderTextColor="#9AA8C2"
               style={[styles.input, styles.pinInput]}
               keyboardType="number-pad"
@@ -152,8 +161,10 @@ export default function AddKaryawanModal({ visible, onClose, onSave }: Props) {
               />
             </Pressable>
           </View>
-          {pin.length > 0 && !isPinValid && (
-            <Text style={styles.hint}>PIN harus 4 digit angka</Text>
+          {isEditing ? (
+            <Text style={styles.hint}>Biarkan kosong jika PIN tidak diubah. Isi 4 digit angka untuk reset PIN.</Text>
+          ) : (
+            pin.length > 0 && !isPinValid && <Text style={styles.hint}>PIN harus 4 digit angka</Text>
           )}
 
           <View style={styles.actionRow}>

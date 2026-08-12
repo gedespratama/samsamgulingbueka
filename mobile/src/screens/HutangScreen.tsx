@@ -16,8 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import EmptyState from '../components/ui/EmptyState';
+import RestrictedAccess from '../components/ui/RestrictedAccess';
 import { debtRepo } from '../db/repositories';
 import { useDbList } from '../db/useDbList';
+import { useCashier } from '../context/CashierContext';
 import type { CustomerDebt, SupplierDebt } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
@@ -26,11 +28,15 @@ import type { RootStackParamList } from '../navigation/types';
 
 type TabKey = 'pelanggan' | 'supplier';
 
-const formatDate = (iso: string) =>
-  new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(new Date(iso));
+const formatDate = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(date);
+};
 
 export default function HutangScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { cashier } = useCashier();
   const { data: customerDebts, refresh: refreshCustomer } = useDbList(debtRepo.getCustomerDebts);
   const { data: supplierDebts, refresh: refreshSupplier } = useDbList(debtRepo.getSupplierDebts);
   const [tab, setTab] = useState<TabKey>('pelanggan');
@@ -41,6 +47,15 @@ export default function HutangScreen() {
   const [dueDate, setDueDate] = useState('');
 
   useBlurOnClose(addVisible);
+
+  if (cashier?.role === 'kasir') {
+    return (
+      <RestrictedAccess
+        message="Hanya profil Pemilik dan Admin yang dapat mengakses data hutang."
+        onBack={() => navigation.goBack()}
+      />
+    );
+  }
 
   const customerUnpaid = customerDebts
     .filter((d) => d.status === 'unpaid')
@@ -290,9 +305,9 @@ export default function HutangScreen() {
             />
             <Text style={styles.label}>Jumlah (Rp)</Text>
             <TextInput
-              value={amount}
+              value={amount ? Number(amount).toLocaleString('id-ID') : ''}
               onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, '').slice(0, 9))}
-              placeholder="50000"
+              placeholder="50.000"
               placeholderTextColor="#9AA8C2"
               keyboardType="number-pad"
               style={styles.input}

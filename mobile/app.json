@@ -3,7 +3,7 @@
     "name": "Samsam Guling Bu Eka",
     "slug": "samsam-guling-bu-eka",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F2F6FC",
@@ -12,6 +12,13 @@
     },
     "android": {
       "package": "com.postinginternet.samsamgulingbueka",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -25,14 +32,9 @@
       "bundler": "metro",
       "output": "single"
     },
-    "extra": {
-      "eas": {
-        "projectId": "2fd98edb-1855-4609-a704-3271d6a7bea3"
-      }
-    },
-    "owner": "postinginternet",
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "react-native-ble-plx"
     ]
   }
 }

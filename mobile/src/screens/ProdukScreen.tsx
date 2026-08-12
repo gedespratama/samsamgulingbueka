@@ -7,8 +7,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MenuFormModal, { type MenuFormData } from '../components/MenuFormModal';
 import FilterChips from '../components/ui/FilterChips';
 import EmptyState from '../components/ui/EmptyState';
+import RestrictedAccess from '../components/ui/RestrictedAccess';
 import { categoryRepo, menuRepo } from '../db/repositories';
 import { useDbList } from '../db/useDbList';
+import { useCashier } from '../context/CashierContext';
 import type { Menu } from '../data/mock';
 import { colors } from '../theme';
 import { formatRupiah } from '../utils/format';
@@ -18,6 +20,7 @@ type CategoryKey = string;
 
 export default function ProdukScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { cashier } = useCashier();
   const { data: menus, loading: menusLoading, refresh: refreshMenus } = useDbList(menuRepo.getAll);
   const { data: categories } = useDbList(categoryRepo.getAll);
   const [category, setCategory] = useState<CategoryKey>('semua');
@@ -34,6 +37,15 @@ export default function ProdukScreen() {
     [menus, category]
   );
 
+  if (cashier?.role === 'kasir') {
+    return (
+      <RestrictedAccess
+        message="Hanya profil Pemilik dan Admin yang dapat mengelola produk."
+        onBack={() => navigation.goBack()}
+      />
+    );
+  }
+
   const openAdd = () => {
     setEditing(null);
     setModalVisible(true);
@@ -44,9 +56,33 @@ export default function ProdukScreen() {
     setModalVisible(true);
   };
 
+  const buildVariants = (vs: { name: string; priceExtra: number }[]) =>
+    vs.map((v) => ({
+      id: `tmp-${Math.random().toString(36).slice(2, 8)}`,
+      name: v.name,
+      priceExtra: v.priceExtra,
+    }));
+
+  const buildAddons = (as: { name: string; price: number }[]) =>
+    as.map((a) => ({
+      id: `tmp-${Math.random().toString(36).slice(2, 8)}`,
+      name: a.name,
+      price: a.price,
+    }));
+
   const handleSave = async (data: MenuFormData) => {
     if (editing) {
-      await menuRepo.update({ ...editing, ...data, basePrice: data.price });
+      await menuRepo.update({
+        ...editing,
+        name: data.name,
+        basePrice: data.price,
+        costPrice: data.costPrice,
+        categoryId: data.categoryId,
+        stock: data.stock,
+        available: data.available,
+        variants: buildVariants(data.variants),
+        addons: buildAddons(data.addons),
+      });
       Alert.alert('Berhasil', `${data.name} berhasil diperbarui.`);
     } else {
       const id = `m-${Date.now()}`;
@@ -58,8 +94,8 @@ export default function ProdukScreen() {
           categoryId: data.categoryId,
           stock: data.stock,
           available: data.available,
-          variants: [],
-          addons: [],
+          variants: buildVariants(data.variants),
+          addons: buildAddons(data.addons),
         },
         id
       );

@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import FilterChips from '../components/ui/FilterChips';
 import EmptyState from '../components/ui/EmptyState';
 import { useSync } from '../context/SyncContext';
+import { useCashier } from '../context/CashierContext';
 import { orderRepo } from '../db/repositories';
 import { useDbList } from '../db/useDbList';
 import { paymentMethodMeta, type Transaction } from '../data/mock';
@@ -36,11 +37,17 @@ const rangeOptions = [
 const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-const formatTime = (iso: string) =>
-  new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+const formatTime = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(date);
+};
 
-const formatDate = (iso: string) =>
-  new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso));
+const formatDate = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+};
 
 export default function RiwayatScreen() {
   const { pendingIds } = useSync();
@@ -108,8 +115,14 @@ export default function RiwayatScreen() {
                 </View>
                 <View style={styles.cardTextArea}>
                   <View style={styles.cardTitleRow}>
-                    <Text style={styles.cardId}>{item.id}</Text>
-                    {pendingIds.includes(item.id) && (
+                    <Text style={[styles.cardId, item.voided && styles.cardIdVoided]}>{item.id}</Text>
+                    {item.voided && (
+                      <View style={styles.voidBadge}>
+                        <MaterialCommunityIcons name="cancel" size={11} color={colors.danger} />
+                        <Text style={styles.voidBadgeText}>Dibatalkan</Text>
+                      </View>
+                    )}
+                    {!item.voided && pendingIds.includes(item.id) && (
                       <View style={styles.syncBadge}>
                         <MaterialCommunityIcons name="cloud-off-outline" size={11} color={colors.warning} />
                         <Text style={styles.syncBadgeText}>Menunggu Sinkron</Text>
@@ -121,19 +134,22 @@ export default function RiwayatScreen() {
                     {item.orderType === 'dine_in' ? `Meja ${item.tableNumber}` : 'Takeaway'}
                   </Text>
                 </View>
-                <Text style={styles.cardTotal}>{formatRupiah(item.totalAmount)}</Text>
+                <Text style={[styles.cardTotal, item.voided && styles.cardTotalVoided]}>
+                  {formatRupiah(item.totalAmount)}
+                </Text>
               </View>
             </Pressable>
           );
         }}
       />
 
-      <TransactionDetailModal transaction={selected} onClose={() => setSelected(null)} />
+      <TransactionDetailModal transaction={selected} onClose={() => setSelected(null)} onVoided={refresh} />
     </SafeAreaView>
   );
 }
 
-function TransactionDetailModal({ transaction, onClose }: { transaction: Transaction | null; onClose: () => void }) {
+function TransactionDetailModal({ transaction, onClose, onVoided }: { transaction: Transaction | null; onClose: () => void; onVoided: () => void }) {
+  const { cashier } = useCashier();
   const [downloading, setDownloading] = useState(false);
 
   const handleDownload = async () => {
@@ -157,12 +173,37 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: Transac
         total: transaction.totalAmount,
         paymentMethod: transaction.paymentMethod,
         transactionType: transaction.transactionType,
+        cashierName: cashier?.name,
       });
     } catch {
       Alert.alert('Gagal', 'Gagal membuat PDF struk. Silakan coba lagi.');
     } finally {
       setDownloading(false);
     }
+  };
+
+  const handleVoid = () => {
+    if (!transaction) return;
+    Alert.alert(
+      'Void Transaksi',
+      `Batalkan transaksi ${transaction.id} sebesar ${formatRupiah(transaction.totalAmount)}?\n\nTransaksi yang dibatalkan tidak akan dihitung dalam laporan penjualan.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Void',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await orderRepo.void(transaction.id);
+              onClose();
+              onVoided();
+            } catch {
+              Alert.alert('Gagal', 'Gagal membatalkan transaksi. Silakan coba lagi.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -189,11 +230,19 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: Transac
               </Pressable>
             </View>
 
+            {transaction.voided && (
+              <View style={styles.voidBanner}>
+                <MaterialCommunityIcons name="cancel" size={16} color={colors.danger} />
+                <Text style={styles.voidBannerText}>Transaksi ini telah dibatalkan (void)</Text>
+              </View>
+            )}
+
             <View style={styles.infoCard}>
               <InfoRow label="Tipe Pesanan" value={transaction.orderType === 'dine_in' ? `Dine-in (Meja ${transaction.tableNumber})` : 'Takeaway'} />
               <InfoRow label="Metode" value={paymentMethodMeta[transaction.paymentMethod].label} />
               <InfoRow label="Jenis Transaksi" value={transaction.transactionType === 'offline' ? 'Offline (Tunai)' : 'Online'} />
-              <InfoRow label="Sinkronisasi" value={transaction.syncStatus === 'synced' ? 'Tersinkron' : 'Menunggu Sinkronisasi'} />
+              <InfoRow label="Sinkronisasi" value={transaction.voided ? 'Tidak dikirim (void)' : transaction.syncStatus === 'synced' ? 'Tersinkron' : 'Menunggu Sinkronisasi'} />
+              <InfoRow label="Status" value={transaction.voided ? 'Dibatalkan' : 'Selesai'} />
             </View>
 
             <Text style={styles.sectionLabel}>Item Pesanan</Text>
@@ -219,9 +268,9 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: Transac
 
             <Pressable
               accessibilityRole="button"
-              disabled={downloading}
+              disabled={downloading || transaction.voided}
               onPress={handleDownload}
-              style={[styles.downloadButton, downloading && styles.downloadButtonDisabled]}
+              style={[styles.downloadButton, (downloading || transaction.voided) && styles.downloadButtonDisabled]}
             >
               {downloading ? (
                 <ActivityIndicator size="small" color={colors.white} />
@@ -232,6 +281,17 @@ function TransactionDetailModal({ transaction, onClose }: { transaction: Transac
                 {downloading ? 'Membuat PDF...' : 'Unduh PDF Struk'}
               </Text>
             </Pressable>
+
+            {!transaction.voided && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleVoid}
+                style={styles.voidButton}
+              >
+                <MaterialCommunityIcons name="cancel" size={16} color={colors.danger} />
+                <Text style={styles.voidButtonText}>Void Transaksi</Text>
+              </Pressable>
+            )}
           </ScrollView>
         )}
       </View>
@@ -310,6 +370,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  cardIdVoided: {
+    color: colors.textMuted,
+    textDecorationLine: 'line-through',
+  },
+  voidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  voidBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.danger,
+  },
   syncBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -333,6 +411,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: colors.text,
+  },
+  cardTotalVoided: {
+    color: colors.textMuted,
+    textDecorationLine: 'line-through',
+  },
+  voidBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  voidBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  voidButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginTop: 10,
+  },
+  voidButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.danger,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

@@ -22,8 +22,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [autoSync, setAutoSync] = useState(true);
 
   const refreshPending = useCallback(async () => {
-    const ids = await syncRepo.getPendingIds();
-    setPendingIds(ids);
+    try {
+      const ids = await syncRepo.getPendingIds();
+      setPendingIds(ids);
+    } catch {
+      setPendingIds([]);
+    }
   }, []);
 
   useEffect(() => {

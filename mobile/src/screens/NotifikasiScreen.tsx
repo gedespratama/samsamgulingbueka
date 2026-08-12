@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import EmptyState from '../components/ui/EmptyState';
-import { notificationsSeed, type AppNotification } from '../data/mock';
+import { notificationRepo, type AppNotification } from '../db/repositories';
+import { useDbList } from '../db/useDbList';
 import { colors } from '../theme';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -26,15 +28,31 @@ const timeAgo = (iso: string) => {
 };
 
 export default function NotifikasiScreen() {
-  const [notifications, setNotifications] = useState<AppNotification[]>(notificationsSeed);
+  const { data: notifications, refresh } = useDbList(notificationRepo.getAll);
+  const [busy, setBusy] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  const markAllRead = async () => {
+    setBusy(true);
+    try {
+      await notificationRepo.markAllRead();
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const toggleRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)));
+  const toggleRead = async (id: string) => {
+    const target = notifications.find((n) => n.id === id);
+    if (!target) return;
+    await notificationRepo.markRead(id, !target.read);
+    await refresh();
   };
 
   return (
@@ -49,6 +67,7 @@ export default function NotifikasiScreen() {
         {unreadCount > 0 && (
           <Pressable
             accessibilityRole="button"
+            disabled={busy}
             onPress={markAllRead}
             style={styles.readAllButton}
           >
